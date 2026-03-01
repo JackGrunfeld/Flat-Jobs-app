@@ -2,12 +2,20 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const cors = require("cors");
 const bodyParser = require("body-parser");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-const db = new sqlite3.Database("./cleaning.db");
+// Ensure the database file exists
+const dbPath = path.join(__dirname, "cleaning.db");
+if (!fs.existsSync(dbPath)) {
+  fs.closeSync(fs.openSync(dbPath, "w"));
+}
+
+const db = new sqlite3.Database(dbPath);
 
 // Initialize table
 db.serialize(() => {
@@ -21,6 +29,15 @@ db.serialize(() => {
     )
   `);
 });
+
+// Serve React frontend if build folder exists
+const buildPath = path.join(__dirname, "frontend/build");
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(buildPath, "index.html"));
+  });
+}
 
 // Get history for all weeks
 app.get("/history", (req, res) => {
@@ -50,5 +67,6 @@ app.post("/history", (req, res) => {
   );
 });
 
-const PORT = 5000;
+// Use dynamic port for Render deployment
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
