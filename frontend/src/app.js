@@ -28,9 +28,6 @@ const taskDetails = {
 
 const baseDate = new Date(); // first Monday of rotation
 
-// ✅ Use relative URL so it works on both localhost and Render
-const API_BASE = process.env.REACT_APP_API_URL || "https://flat-jobs-app.onrender.com";
-
 export default function CleaningRosterApp() {
   const [week, setWeek] = useState(0);
   const [history, setHistory] = useState({});
@@ -38,15 +35,18 @@ export default function CleaningRosterApp() {
 
   // Load history from backend
   useEffect(() => {
-    axios.get(`${API_BASE}/history`).then((res) => {
-      setHistory(res.data);
-    });
+      const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
+      useEffect(() => {
+        axios.get(`${API_BASE_URL}/history`).then((res) => {
+        setHistory(res.data);
+      });
   }, []);
 
   // Auto-calculate current week based on Monday-Sunday weeks
   useEffect(() => {
     const today = new Date();
-    const day = today.getDay();
+    const day = today.getDay(); // Sunday = 0
     const monday = new Date(today);
     monday.setDate(today.getDate() + (day === 0 ? -6 : 1 - day));
     const diffDays = Math.floor((monday - baseDate) / (1000 * 60 * 60 * 24));
@@ -81,7 +81,7 @@ export default function CleaningRosterApp() {
   const getWeekDates = (weekIndex) => {
     const start = new Date(baseDate);
     const day = start.getDay();
-    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
     start.setDate(start.getDate() + diffToMonday + weekIndex * 7);
     const end = new Date(start);
     end.setDate(start.getDate() + 6);
@@ -92,7 +92,10 @@ export default function CleaningRosterApp() {
       month: "long",
       year: "numeric",
     };
-    return `${start.toLocaleDateString("en-US", options)} to ${end.toLocaleDateString("en-US", options)}`;
+    return `${start.toLocaleDateString(
+      "en-US",
+      options
+    )} to ${end.toLocaleDateString("en-US", options)}`;
   };
 
   const assignments = getAssignments();
@@ -100,7 +103,7 @@ export default function CleaningRosterApp() {
   const toggleTask = (task, checked) => {
     const person = assignments[task];
     axios
-      .post(`${API_BASE}/history`, { week, task, person, done: checked })
+      .post("http://localhost:5000/history", { week, task, person, done: checked })
       .then(() => {
         setHistory((prev) => ({
           ...prev,
@@ -146,7 +149,6 @@ export default function CleaningRosterApp() {
                 type="checkbox"
                 checked={history[week]?.[task]?.done || false}
                 onChange={(e) => toggleTask(task, e.target.checked)}
-                onClick={(e) => e.stopPropagation()}
                 className="w-5 h-5"
               />
               <span>Task Completed</span>
