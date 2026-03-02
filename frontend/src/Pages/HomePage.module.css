@@ -1,0 +1,28 @@
+.container {
+  min-height: 100vh;
+  background: black;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.title {
+  font-size: 2.5rem;
+  font-weight: Lighter;
+  margin-bottom: 1.5rem;
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  width: 100%;
+  max-width: 900px;
+}
+
+@media (min-width: 768px) {
+  .cardGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

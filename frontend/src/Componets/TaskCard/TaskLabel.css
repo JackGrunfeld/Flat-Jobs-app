@@ -1,0 +1,14 @@
+.task-label {
+  display: flex;
+  background: transparent;
+  
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  color: WHITE;
+}
+
+.task-checkbox {
+  width: 20px;
+  height: 20px;
+}
