@@ -35,12 +35,10 @@ export default function CleaningRosterApp() {
 
   // Load history from backend
   useEffect(() => {
-      const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
-
-      useEffect(() => {
-        axios.get(`${API_BASE_URL}/history`).then((res) => {
-        setHistory(res.data);
-      });
+    const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
+    axios.get(`${API_BASE_URL}/history`).then((res) => {
+      setHistory(res.data);
+    });
   }, []);
 
   // Auto-calculate current week based on Monday-Sunday weeks
