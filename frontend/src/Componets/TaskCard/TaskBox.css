@@ -1,8 +1,23 @@
+
 .task-box {
   background: rgb(255, 255, 255);
-  border-radius: 1rem;
-  padding: 1rem;
+  border-radius: 10px;
+  padding: 0.5rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   cursor: pointer;
   transition: 0.2s;
+  display: grid;
+
+  /* LEFT side grows, right side is fixed width */
+  grid-template-columns: 1fr 50px;
+
+  /* align the checkbox vertically to the whole box */
+  align-items: center;
+  gap: 0.001rem;                /* smaller gap inside the box */
+}
+
+.task-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }

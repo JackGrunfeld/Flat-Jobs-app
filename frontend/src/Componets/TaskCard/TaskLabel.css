@@ -1,14 +1,33 @@
 .task-label {
   display: flex;
-  background: transparent;
-  
+  justify-content: center;
   align-items: center;
-  gap: 0.5rem;
-  margin-top: 0.8rem;
-  color: WHITE;
 }
 
+
+/* Checkbox styling */
 .task-checkbox {
-  width: 20px;
-  height: 20px;
+  outline: 3px solid #FF4E00;
+  border-radius: 0.1rem;
+  background: transparent;
+  width: 15px;
+  height: 15px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.task-checkbox:checked {
+  background: transparent;
+  position: relative;
+}
+
+.task-checkbox:checked::after {
+  content: '✓';
+  position: absolute;
+  color: #FF4E00;
+  font-size: 15px;
+  font-weight: 9000;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }

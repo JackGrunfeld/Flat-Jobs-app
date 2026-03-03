@@ -35,11 +35,11 @@ export default function HomePage() {
 
   // map each flatmate to a distinct colour for visual identification
   const personColors = {
-    Holly: '#FFBAF9',
-    Molly: '#B4FA64',
-    Finn: '#FF7F17',
-    Josh: '#229CFF',
-    Jack: '#00A965',
+    Holly: '#fd9ff5',
+    Molly: '#a6f948',
+    Finn: '#fe7200',
+    Josh: '#008cff',
+    Jack: '#00d01c',
   };
   const getPersonColor = (person) => personColors[person] || 'transparent';
 
@@ -66,8 +66,8 @@ export default function HomePage() {
   return (
     <div className={styles.container}>
 
-      <div className={styles.title}>
-        <Logo className="Logo" style={{ maxWidth: "100%", height: "auto" }} />
+      <div className="title-image">
+        <Logo className="Logo" />
       </div>
 
      <div className="week-header">
@@ -85,44 +85,56 @@ export default function HomePage() {
   </button>
 </div>
 
-      {/* --- TASK CARDS --- */}
-      <div className={styles.cardGrid}>
-        {Object.keys(assignments).map((task) => (
-       <div
-        key={task}
-        className="task-box"
-        style={{ backgroundColor: getPersonColor(assignments[task]) }}
-        onClick={() => setExpandedTask(expandedTask === task ? null : task)}
-      >
-            <h2 className="task-title">{task}</h2>
-            <p className="task-assignee">
-              🧹 {assignments[task]}
-            </p>
-
-            {expandedTask === task && (
-              <div className="task-details">
-                {typeof taskDetails[task] === "function"
-                  ? taskDetails[task](week)
-                  : taskDetails[task]}
-              </div>
-            )}
-
-            <label
-              className="task-label"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <input
-                type="checkbox"
-                className="task-checkbox"
-                checked={history[week]?.[task]?.done || false}
-                onChange={(e) => toggleTask(task, e.target.checked)}
-              />
-              <span>Task Completed</span>
-            </label>
-          </div>
-        ))}
+{/* --- TASK CARDS --- */}
+<div className={styles.cardGrid}>
+  {Object.entries(assignments).map(([person, tasksString]) => (
+    <div
+      key={person}
+      className="task-box"
+      style={{ backgroundColor: getPersonColor(person) }}
+      onClick={() =>
+        setExpandedTask(expandedTask === person ? null : person)
+      }
+    >
+      {/* LEFT SIDE */}
+      <div className="task-left">
+        <h2 className="task-assignee">{person}</h2>
+        <p className="task-title">{tasksString}</p>
       </div>
 
+      {/* RIGHT SIDE CHECKBOX */}
+      <label className="task-label" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          className="task-checkbox"
+          checked={history[week]?.[tasksString]?.done || false}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            toggleTask(tasksString, checked);
+          }}
+        />
+      </label>
+
+      {/* DETAILS SECTION */}
+      {expandedTask === person && (
+        <div className="task-details-container">
+          {tasksString
+            .split(" + ")
+            .map((t, i) => (
+              <div key={i} className="task-details">
+                <strong>{t}</strong> {/* optional: show the task/location name */}
+                <div className="task-details-text">
+                  {typeof taskDetails[t] === "function"
+                    ? taskDetails[t](week)
+                    : taskDetails[t]}
+                </div>
+              </div>
+            ))}
+        </div>
+      )}
+    </div>
+  ))}
+</div>
       {/* NEXT WEEK BUTTON */}
       <button
         onClick={() => setWeek((w) => w + 1)}

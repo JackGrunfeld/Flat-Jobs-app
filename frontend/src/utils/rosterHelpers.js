@@ -3,6 +3,17 @@ import { flatmates, tasks, bathroomAUsers, bathroomBUsers } from "../Data/cleani
 
 export const baseDate = new Date(); // first Monday of rotation
 
+// Mapping full task names to short locations
+const taskLocations = {
+  "Clean the Kitchen": "Kitchen",
+  "Clean the Fridge": "Fridge",
+  "Clean Living Room": "Living Room",
+  "Clean Dining Room": "Dining Room",
+  "Clean Main Bathroom": "Main Bathroom",
+  "Clean Small Bathroom": "Small Bathroom",
+  "Take the Bins Out": "Bins",
+};
+
 // ------------ WEEK CALCULATION -------------
 export function getCurrentWeek() {
   const today = new Date();
@@ -20,12 +31,13 @@ export function getCurrentWeek() {
 export function getAssignments(week) {
   const assignments = {};
 
+  // Assign tasks normally first
   tasks.forEach((task, index) => {
     const person = flatmates[(week + index) % flatmates.length];
     assignments[task] = person;
   });
 
-  const largeJobs = ["Clean the Kitchen", "Clean the Fridge"];
+  const largeJobs = ["Kitchen", "Fridge"];
 
   const bathroomACandidates = bathroomAUsers.filter(
     (person) => !largeJobs.some((job) => assignments[job] === person)
@@ -36,12 +48,23 @@ export function getAssignments(week) {
       ? bathroomACandidates[week % bathroomACandidates.length]
       : bathroomAUsers[week % bathroomAUsers.length];
 
-  assignments["Clean Bathroom A (Holly, Molly, Josh)"] = bathroomAcleaner;
-
-  assignments["Clean Bathroom B (Jack, Finn)"] =
+  assignments["Main Bathroom"] = bathroomAcleaner;
+  assignments["Small Bathroom"] =
     bathroomBUsers[week % bathroomBUsers.length];
 
-  return assignments;
+  // ---- Combine tasks by assignee into a single location string ----
+  const byAssignee = {};
+
+  Object.entries(assignments).forEach(([task, person]) => {
+    const location = taskLocations[task] || task; // default to full task name
+    if (!byAssignee[person]) {
+      byAssignee[person] = location;
+    } else {
+      byAssignee[person] += " + " + location;
+    }
+  });
+
+  return byAssignee;
 }
 
 // ------------ WEEK RANGE DISPLAY -------------

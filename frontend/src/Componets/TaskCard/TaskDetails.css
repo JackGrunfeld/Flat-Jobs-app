@@ -1,7 +1,27 @@
+@font-face {
+  font-family: 'helveticaNeue';
+  src: url(../Fonts/HelveticaNeueLTPro-MdCn.otf) format("truetype");
+  font-weight: 9000;
+}
+
+
 .task-details {
+  font-family: 'helveticaNeue';
+  white-space: pre-wrap;
+  line-height: 1.6;
+  padding: 0.8rem 0.5rem;
+  border-left: 4px solid #272323;
+  background: rgba(255, 255, 255, 0.5); /* 50% transparent */
   margin-top: 0.5rem;
-  padding: 0.7rem;
-  background: #f3e8ff;
   border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.task-details::before {
+  content: "Details";
+  display: block;
+  font-weight: bold;
+  margin-bottom: 0.4rem;
+  color: #FF4E00;
   font-size: 0.9rem;
 }

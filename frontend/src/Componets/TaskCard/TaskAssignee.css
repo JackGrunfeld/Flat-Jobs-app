@@ -1,4 +1,13 @@
+@font-face {
+  font-family: 'helveticaNeue';
+  src: url(../Fonts/HelveticaNeueLTPro-MdCn.otf) format("truetype");
+  font-weight: 9000;
+}
+
 .task-assignee {
-  margin-top: 0.5rem;
-  font-size: 1.1rem;
+  margin-bottom: 0px;
+  margin-top: 15px;
+  font-size: 2rem;
+  font-weight: 10000;
+  font-family: 'helveticaNeue';
 }

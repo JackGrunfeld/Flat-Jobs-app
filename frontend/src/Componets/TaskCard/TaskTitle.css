@@ -1,6 +1,15 @@
+@font-face {
+  font-family: 'helveticaNeue';
+  src: url(../Fonts/HelveticaNeueLTPro-MdCn.otf) format("truetype");
+  font-weight: 9000;
+}
+
 .task-title {
-  font-size: 1.9rem;
-  font-family: Helvetica Neue, sans-serif;
-  font-weight: 20;
-  color: BLACK;
+  margin-bottom: 5px;
+  margin-top: -5px;
+  font-size: 1.4rem;
+  top: 1%;
+  font-weight: 10000;
+  font-family: 'helveticaNeue';
+  color: black;
 }
