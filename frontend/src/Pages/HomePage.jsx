@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+
 import  { ReactComponent as Logo } from "../Componets/logos/TICK-IT.svg";
+import { motion } from "framer-motion";
 import {
   flatmates,
   tasks,
@@ -16,14 +18,16 @@ import "../Componets/TaskCard/TaskAssignee.css";
 import "../Componets/TaskCard/TaskDetails.css";
 import "../Componets/TaskCard/TaskLabel.css";
 import "../Componets/WeekTitle/WeekTitle.css";
-
-
+import "../Componets/NavBar/NavBar.css";
 
 
 export default function HomePage() {
   const [week, setWeek] = useState(0);
   const [history, setHistory] = useState({});
   const [expandedTask, setExpandedTask] = useState(null);
+  const [view, setView] = useState("home");
+  const [activeNav, setActiveNav] = useState("Home"); // NEW: active nav button
+
 
   useEffect(() => {
     fetchHistory().then((res) => {
@@ -63,13 +67,35 @@ export default function HomePage() {
     });
   };
 
+  const handleNavClick = (name) => {
+    console.log(`${name} button clicked`);
+    setActiveNav(name); // set the clicked button as active
+    setView(name.toLowerCase()); // optional: update view if needed
+  };
+
   return (
     <div className={styles.container}>
 
-      <div className="title-image">
-        <Logo className="Logo" />
-      </div>
+        <div className="title-image">
+          <Logo className="Logo" />
+        </div>
 
+         {/* NAVIGATION BAR */}
+      <nav className="navbar">
+        {["Home", "History", "Settings"].map((item) => (
+          <button
+            key={item}
+            className={`nav-item ${activeNav === item ? "active" : ""}`}
+            onClick={() => handleNavClick(item)}
+          >
+            {item}
+          </button>
+        ))}
+      </nav>
+
+
+
+      {/* WEEK HEADER */}
      <div className="week-header">
       <button className="week-btn" onClick={() => setWeek(w => Math.max(0, w - 1))}>
       &lt;
@@ -84,6 +110,8 @@ export default function HomePage() {
     &gt;
   </button>
 </div>
+
+
 
 {/* --- TASK CARDS --- */}
 <div className={styles.cardGrid}>
@@ -135,6 +163,8 @@ export default function HomePage() {
     </div>
   ))}
 </div>
+
+
       {/* NEXT WEEK BUTTON */}
       <button
         onClick={() => setWeek((w) => w + 1)}
