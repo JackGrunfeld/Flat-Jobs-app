@@ -1,39 +1,52 @@
 /* HistoryCard.css */
-.history-card {
-  border-radius: 0.8rem;
-  padding: 1rem;
-  margin-bottom: 1rem;
-  color: #000;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+@font-face {
+  font-family: 'helveticaNeue';
+  src: url(../Fonts/HelveticaNeueLTPro-MdCn.otf) format("truetype");
+  font-weight: 9000;
 }
 
-.history-card h2 {
-  font-size: 1.3rem;
-  font-weight: bold;
+
+.history-card {
+  font-family: 'helveticaNeue';
+  border-radius: 0.8rem;
+  padding: 1rem;
+  background-color: #82c7a1;
+  margin-bottom: 0cqmin;
+  color: #000000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+
+  display: grid;
+  grid-template-columns: repeat(2, 1fr); /* 22 equal columns */
+  gap: 0.1em; /* space between columns */
+}
+
+.history-card h2,
+.history-card .week-range {
+
+  grid-column: span 22; /* span all columns */
   margin: 0 0 0.3rem 0;
 }
 
-.history-card .week-range {
-  font-size: 1rem;
-  margin-bottom: 0.5rem;
-  opacity: 0.8;
+.history-task {
+  display: contents; /* children will participate in the grid */
 }
 
-.history-task {
-  display: flex;
-  justify-content: space-between;
+.history-task .task-name {
+  grid-column: span 18; /* task takes 18/22 columns */
   font-weight: 600;
   padding: 0.2rem 0;
 }
 
 .history-task .status {
+  grid-column: span 4; /* status takes remaining 4 columns */
   font-weight: bold;
+  text-align: right; /* align status to the right */
 }
 
 .status.done {
-  color: #00d01c; /* green */
+  color: #024a0f; /* green */
 }
 
 .status.not-done {
-  color: #ff3b3b; /* red */
+  color: #4b0000; /* red */
 }

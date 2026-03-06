@@ -50,7 +50,9 @@ export default function HomePage() {
 
   // Save task toggle
   const toggleTask = (task, checked) => {
-    const person = assignments[task];
+    const person = Object.keys(assignments).find(
+      (p) => assignments[p] === task
+    );
 
     saveTask({
       week,
@@ -165,35 +167,27 @@ export default function HomePage() {
   </div>
 )}
 
-      {view === "history" && (
-        <div className={styles.cardGrid}>
-          {Object.keys(history).map((weekNum) => {
-            const bgColor = `hsl(${Math.random() * 360}, 70%, 70%)`;
-            return (
-              <div
-                key={weekNum}
-                className="history-card"
-                style={{ backgroundColor: bgColor }}
-              >
-                <h2>Week {Number(weekNum) + 1}</h2>
-                <div className="week-range">{getWeekDates(Number(weekNum))}</div>
-                {Object.keys(history[weekNum]).map((task) => {
-                  const done = history[weekNum][task].done;
-                  const person = history[weekNum][task].person;
-                  return (
-                    <div key={task} className="history-task">
-                      <span>{task}</span>
-                      <span className={`status ${done ? "done" : "not-done"}`}>
-                        {done ? "▇ Done by " + person : "▇ Not Done"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+      {view === "history" && history[week] && (
+      <div className={styles.cardGrid}>
+        {Object.keys(history[week]).map((task) => {
+          const done = history[week][task].done;
+          const person = history[week][task].person;
+
+          return (
+                  <div
+          key={task}
+          className="history-card"
+          style={{ backgroundColor: getPersonColor(person) }}
+        >
+          <h2>{task}</h2>
+          <div className={`status ${done ? "done" : "not-done"}`}>
+            {done ? "Done by " + person : "Not Done"}
+          </div>
         </div>
-      )}
+      );
+    })}
+  </div>
+)}
     </div>
   );
 }

@@ -12,7 +12,7 @@ export const bathroomAUsers = ["Holly", "Molly", "Josh"];
 export const bathroomBUsers = ["Jack", "Finn"];
 export const taskDetails = {
   "Kitchen":
-    "\n• Sweep, mop, vacuum\n• dishes away\n• general tidy. \n• Srcub Stove Top \n• Wipe down surfaces\n• Clean sink and taps",
+    "\n• Sweep, mop, vacuum\n• dishes away\n• general tidy. \n• Srcub Stove Top \n• Wipe down surfaces\n• Clean sink and taps\n• Clean and Tidy Dining Room \n• Wipe down Dining Room ",
     
   "Bins": (week) => {
     const type = week % 2 === 0 ? "Food Scraps" : "Recycling"; // every other week
@@ -34,6 +34,4 @@ export const taskDetails = {
   "Small Bathroom":
     "\n• Mop\n• vacuum\n• general tidy\n• clean sink and shower.",
 
-  "Dining room":
-   "\n• Sweep or vacuum \n• general tidy.",
 };

@@ -8,7 +8,6 @@ const taskLocations = {
   "Clean the Kitchen": "Kitchen",
   "Clean the Fridge": "Fridge",
   "Clean Living Room": "Living Room",
-  "Clean Dining Room": "Dining Room",
   "Clean Main Bathroom": "Main Bathroom",
   "Clean Small Bathroom": "Small Bathroom",
   "Take the Bins Out": "Bins",
@@ -37,7 +36,7 @@ export function getAssignments(week) {
     assignments[task] = person;
   });
 
-  const largeJobs = ["Kitchen", "Fridge"];
+  const largeJobs = ["Kitchen", "Fridge", "Main Bathroom"];
 
   const bathroomACandidates = bathroomAUsers.filter(
     (person) => !largeJobs.some((job) => assignments[job] === person)
