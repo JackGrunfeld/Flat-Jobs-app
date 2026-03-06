@@ -6,14 +6,12 @@ const path = require("path");
 const fs = require("fs");
 
 const app = express();
-app.use(cors({
-  origin: "https://flat-jobs-app-production.up.railway.app", // Replace with your frontend URL
-  methods: ["GET", "POST"],
-}));
+
+// ===== MIDDLEWARE =====
+app.use(cors()); // Since frontend is served together, no need for strict origin
 app.use(bodyParser.json());
 
-
-// Ensure the database file exists
+// ===== DATABASE =====
 const dbPath = path.join(__dirname, "cleaning.db");
 if (!fs.existsSync(dbPath)) {
   fs.closeSync(fs.openSync(dbPath, "w"));
@@ -33,7 +31,7 @@ db.serialize(() => {
   `);
 });
 
-// API routes FIRST
+// ===== API ROUTES =====
 app.get("/history", (req, res) => {
   console.log("[GET /history] called");
   db.all("SELECT * FROM history", (err, rows) => {
@@ -62,5 +60,15 @@ app.post("/history", (req, res) => {
   );
 });
 
+// ===== SERVE REACT FRONTEND =====
+const frontendPath = path.join(__dirname, "frontend/build");
+app.use(express.static(frontendPath));
+
+// Redirect all non-API routes to React's index.html (React Router safe)
+app.get("*", (req, res) => {
+  res.sendFile(path.join(frontendPath, "index.html"));
+});
+
+// ===== START SERVER =====
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`\n🚀 Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
