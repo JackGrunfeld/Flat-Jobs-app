@@ -7,7 +7,7 @@ const fs = require("fs");
 
 const app = express();
 app.use(cors({
-  origin: "https://flat-jobs-app-production.up.railway.app/", // Replace with your frontend URL
+  origin: "https://flat-jobs-app-production.up.railway.app", // Replace with your frontend URL
   methods: ["GET", "POST"],
 }));
 app.use(bodyParser.json());
