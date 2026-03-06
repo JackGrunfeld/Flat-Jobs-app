@@ -1,16 +1,11 @@
 import React, { useState, useEffect } from "react";
 
 import  { ReactComponent as Logo } from "../Componets/logos/TICK-IT.svg";
-import { motion } from "framer-motion";
 import {
-  flatmates,
-  tasks,
-  bathroomAUsers,
-  bathroomBUsers,
   taskDetails,
 } from "../Data/cleaningData";
 import { fetchHistory, saveTask } from "../services/api";
-import { getAssignments, getWeekDates, getCurrentWeek } from "../utils/rosterHelpers";
+import { getAssignments, getWeekDates } from "../utils/rosterHelpers";
 import styles from "./HomePage.module.css";
 import "../Componets/TaskCard/TaskBox.css";
 import "../Componets/TaskCard/TaskTitle.css";
