@@ -1,7 +1,7 @@
 // utils/rosterHelper.js
 import { flatmates, tasks, bathroomAUsers, bathroomBUsers } from "../Data/cleaningData";
 
-export const baseDate = new Date(); // first Monday of rotation
+export const baseDate = new Date(2026, 4, 11);
 
 // Mapping full task names to short locations
 const taskLocations = {
@@ -29,15 +29,22 @@ export function getCurrentWeek() {
 // ------------ ASSIGNMENT LOGIC -------------
 export function getAssignments(week) {
   const assignments = {};
+  const byAssignee = {};
 
-  // Assign tasks normally first
+  // 1. INITIALIZE: Ensure every flatmate has an entry so they always show up
+  flatmates.forEach((person) => {
+    byAssignee[person] = "";
+  });
+
+  // 2. Original Task Assignment
   tasks.forEach((task, index) => {
     const person = flatmates[(week + index) % flatmates.length];
     assignments[task] = person;
   });
 
-  const largeJobs = ["Kitchen", "Fridge", "Main Bathroom"];
+  const largeJobs = ["Kitchen", "Fridge + Pantry", "Main Bathroom"];
 
+  // 3. Assign Main Bathroom
   const bathroomACandidates = bathroomAUsers.filter(
     (person) => !largeJobs.some((job) => assignments[job] === person)
   );
@@ -48,24 +55,30 @@ export function getAssignments(week) {
       : bathroomAUsers[week % bathroomAUsers.length];
 
   assignments["Main Bathroom"] = bathroomAcleaner;
-  assignments["Small Bathroom"] =
-    bathroomBUsers[week % bathroomBUsers.length];
 
-  // ---- Combine tasks by assignee into a single location string ----
-  const byAssignee = {};
+  // 4. Assign Small Bathroom
+  const smallBathroomPerson = bathroomBUsers[week % bathroomBUsers.length];
+  assignments["Small Bathroom"] = smallBathroomPerson;
 
+  // 5. COMBINE: Populate the strings for each person
   Object.entries(assignments).forEach(([task, person]) => {
-    const location = taskLocations[task] || task; // default to full task name
-    if (!byAssignee[person]) {
+    const location = taskLocations[task] || task;
+    if (byAssignee[person] === "") {
       byAssignee[person] = location;
     } else {
       byAssignee[person] += " + " + location;
     }
   });
 
+  // 6. CLEANUP: If someone has no chores, give them a placeholder
+  flatmates.forEach((person) => {
+    if (!byAssignee[person] || byAssignee[person] === "") {
+      byAssignee[person] = "Off Duty";
+    }
+  });
+
   return byAssignee;
 }
-
 // ------------ WEEK RANGE DISPLAY -------------
 export function getWeekDates(weekIndex) {
   const start = new Date(baseDate);

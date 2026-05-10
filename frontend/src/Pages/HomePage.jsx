@@ -1,189 +1,115 @@
 import React, { useState, useEffect } from "react";
-
-import  { ReactComponent as Logo } from "../Componets/logos/TICK-IT.svg";
-import {
-  taskDetails,
-} from "../Data/cleaningData";
+import { taskDetails } from "../Data/cleaningData";
 import { fetchHistory, saveTask } from "../services/api";
-import { getAssignments, getWeekDates } from "../utils/rosterHelpers";
+import { getAssignments, getWeekDates, getCurrentWeek } from "../utils/rosterHelpers";
 import styles from "./HomePage.module.css";
-import "../Componets/TaskCard/TaskBox.css";
-import "../Componets/TaskCard/TaskTitle.css";
-import "../Componets/TaskCard/TaskAssignee.css";
-import "../Componets/TaskCard/TaskDetails.css";
-import "../Componets/TaskCard/TaskLabel.css";
-import "../Componets/WeekTitle/WeekTitle.css";
-import "../Componets/NavBar/NavBar.css";
-import "../Componets/TaskHistory/TaskHistory.css";
 
+// Person-specific colors from mockup
+const PERSON_COLORS = {
+  Finn: "#FF7A00",
+  Holly: "#FF8FE8",
+  Jack: "#2bcf47",
+  Josh: "#897ee9",
+  Molly: "#CCFF66",
+};
 
 export default function HomePage() {
-  const [week, setWeek] = useState(0);
+  const [week, setWeek] = useState(() => getCurrentWeek());  
   const [history, setHistory] = useState({});
   const [expandedTask, setExpandedTask] = useState(null);
   const [view, setView] = useState("home");
-  const [activeNav, setActiveNav] = useState("Home"); // NEW: active nav button
-
 
   useEffect(() => {
-    fetchHistory().then((res) => {
-      setHistory(res.data);
-    });
+    fetchHistory().then((res) => setHistory(res.data));
   }, []);
 
   const assignments = getAssignments(week);
 
-  // map each flatmate to a distinct colour for visual identification
-  const personColors = {
-    Holly: '#fd9ff5',
-    Molly: '#a6f948',
-    Finn: '#fe7200',
-    Josh: '#008cff',
-    Jack: '#87d000',
-  };
-  const getPersonColor = (person) => personColors[person] || 'transparent';
+  // Derive stats for the dashboard cards
+  const stats = Object.entries(assignments).reduce((acc, [person, task]) => {
+    const done = history[week]?.[task]?.done;
+    done ? acc.done++ : acc.pending++;
+    return acc;
+  }, { done: 0, pending: 0 });
 
-  // Save task toggle
-  const toggleTask = (task, checked) => {
-    const person = Object.keys(assignments).find(
-      (p) => assignments[p] === task
-    );
-
-    saveTask({
-      week,
-      task,
-      person,
-      done: checked,
-    }).then(() => {
-      setHistory((prev) => ({
+  const handleToggle = (task, person, checked) => {
+    saveTask({ week, task, person, done: checked }).then(() => {
+      setHistory(prev => ({
         ...prev,
-        [week]: {
-          ...prev[week],
-          [task]: { done: checked, person },
-        },
+        [week]: { ...prev[week], [task]: { done: checked, person } }
       }));
     });
   };
 
-  const handleNavClick = (name) => {
-    console.log(`${name} button clicked`);
-    setActiveNav(name); // set the clicked button as active
-    setView(name.toLowerCase()); // optional: update view if needed
-  };
-
   return (
     <div className={styles.container}>
+      <header className={styles.header}>
+        <h1 className={styles.logo}>TICK-IT</h1>
+        <div className={styles.weekNav}>
+          <button onClick={() => setWeek(w => Math.max(0, w - 1))}>←</button>
+          <span>{getWeekDates(week)}</span>
+          <button onClick={() => setWeek(w => w + 1)}>→</button>
+        </div>
+      </header>
 
-        <div className="title-image">
-          <Logo className="Logo" />
+      <main className={styles.content}>
+        <div className={styles.statRow}>
+          <div className={styles.statCard}>
+            <span className={styles.statNum}>{stats.done}</span>
+            <span className={styles.statLabel}>Done</span>
+          </div>
+          <div className={styles.statCard}>
+            <span className={styles.statNum}>{stats.pending}</span>
+            <span className={styles.statLabel}>Pending</span>
+          </div>
         </div>
 
-         {/* NAVIGATION BAR */}
-      <nav className="navbar">
-        {["Home", "History", "Settings"].map((item) => (
-          <button
-            key={item}
-            className={`nav-item ${activeNav === item ? "active" : ""}`}
-            onClick={() => handleNavClick(item)}
+        <h2 className={styles.sectionTitle}>This Week</h2>
+        
+        <div className={styles.choreList}>
+          {Object.entries(assignments).map(([person, task]) => {
+            const isDone = history[week]?.[task]?.done;
+            return (
+              <div 
+                key={person} 
+                className={styles.choreCard}
+                style={{ backgroundColor: PERSON_COLORS[person] }}
+                onClick={() => setExpandedTask(expandedTask === person ? null : person)}
+              >
+                <div className={styles.choreInfo}>
+                  <span className={styles.choreName}>{person}</span>
+                  <span className={styles.choreTask}>{task}</span>
+                </div>
+                <div 
+                  className={`${styles.checkbox} ${isDone ? styles.checked : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggle(task, person, !isDone);
+                  }}
+                />
+                {expandedTask === person && (
+                  <div className={styles.details}>
+                    <p>{taskDetails[task] || "No extra instructions."}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </main>
+
+      <nav className={styles.tabBar}>
+        {['Home', 'Config', 'Settings'].map(tab => (
+          <button 
+            key={tab} 
+            className={`${styles.tab} ${view === tab.toLowerCase() ? styles.activeTab : ''}`}
+            onClick={() => setView(tab.toLowerCase())}
           >
-            {item}
+            <div className={styles.tabIcon} />
+            <span>{tab}</span>
           </button>
         ))}
       </nav>
-
-
-
-      {/* WEEK HEADER */}
-     <div className="week-header">
-      <button className="week-btn" onClick={() => setWeek(w => Math.max(0, w - 1))}>
-      &lt;
-  </button>
-
-  <div className="week-info">
-    <div className="week-title"> THIS WEEK</div>
-    <div className="week-range">{getWeekDates(week)}</div>
-  </div>
-
-  <button className="week-btn" onClick={() => setWeek(w => w + 1)}>
-    &gt;
-  </button>
-</div>
-
-
-
-{/* --- TASK CARDS --- */}
-
-
-{/* CONDITIONAL VIEW RENDERING */}
-{view === "home" && (
-  <div className={styles.cardGrid}>
-    {Object.entries(assignments).map(([person, tasksString]) => (
-      <div
-        key={person}
-        className="task-box"
-        style={{ backgroundColor: getPersonColor(person) }}
-        onClick={() =>
-          setExpandedTask(expandedTask === person ? null : person)
-        }
-      >
-        {/* LEFT SIDE */}
-        <div className="task-left">
-          <h2 className="task-assignee">{person}</h2>
-          <p className="task-title">{tasksString}</p>
-        </div>
-
-        {/* RIGHT SIDE CHECKBOX */}
-        <label className="task-label" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            className="task-checkbox"
-            checked={history[week]?.[tasksString]?.done || false}
-            onChange={(e) => toggleTask(tasksString, e.target.checked)}
-          />
-        </label>
-
-        {/* DETAILS SECTION */}
-        {expandedTask === person && (
-          <div className="task-details-container">
-            {tasksString.split(" + ").map((t, i) => (
-              <div key={i} className="task-details">
-                <strong>{t}</strong>
-                <div className="task-details-text">
-                  {typeof taskDetails[t] === "function"
-                    ? taskDetails[t](week)
-                    : taskDetails[t]}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    ))}
-  </div>
-)}
-
-      {view === "history" && history[week] && (
-      <div className={styles.cardGrid}>
-        {Object.keys(history[week]).map((task) => {
-          const done = history[week][task].done;
-          const person = history[week][task].person;
-
-          return (
-                  <div
-          key={task}
-          className="history-card"
-          style={{ backgroundColor: getPersonColor(person) }}
-        >
-          <h2>{task}</h2>
-          <div className={`status ${done ? "done" : "not-done"}`}>
-            {done ? "Done by " + person : "Not Done"}
-          </div>
-        </div>
-      );
-    })}
-  </div>
-)}
     </div>
   );
 }
-

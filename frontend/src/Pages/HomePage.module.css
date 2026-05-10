@@ -1,58 +1,195 @@
 .container {
-  min-height: 100vh;
-  background: black;
-  padding: 2rem;
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  max-width: 500px; /* Constrain for mobile feel */
+  margin: 0 auto;
+}
+
+.header {
+  padding: 20px;
+  text-align: center;
+}
+
+.logo {
+  font-size: 24px;
+  letter-spacing: 4px;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--accent-orange);
+  margin: 0 0 10px 0;
+}
+
+.weekNav {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+
+.weekNav button {
+  background: none;
+  border: none;
+  color: var(--accent-orange);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.statRow {
+  display: flex;
+  gap: 12px;
+  padding: 0 20px;
+}
+
+.statCard {
+  flex: 1;
+  background: var(--bg-card);
+  padding: 12px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.statNum {
+  font-size: 22px;
+  color: var(--accent-orange);
+  font-weight: 800;
+}
+
+.statLabel {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+}
+
+.sectionTitle {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  padding: 20px 20px 10px;
+  margin: 0;
+}
+
+.choreCard {
+  margin: 0 20px 10px;
+  padding: 16px 20px; /* Slightly more padding for that chunky SVG look */
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.choreCard:active {
+  transform: scale(0.98); /* Adds a tactile "click" feel */
+}
+
+.choreInfo {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.85; /* Forces the name and task to stack tightly like the SVG */
+}
+
+.choreName {
+  display: block;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 26px; /* Increased for high impact */
+  font-weight: 900; /* Maximum thickness */
+  color: #000000; /* Solid black for that aggressive look */
+  text-transform: uppercase;
+  letter-spacing: -1.5px; /* Pulls letters together */
+  margin: 0;
+}
+
+.choreTask {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px; /* Balanced with the name */
+  font-weight: 800;
+  color: #272525;
+  letter-spacing: -0.8px;
+  opacity: 0.85; /* High visibility, slight separation */
+}
+
+.checkbox {
+  width: 22px;
+  height: 22px;
+  border: 3px solid #272525; /* Thicker black border to match the text */
+  border-radius: 6px;
+  background: transparent;
+  transition: all 0.2s ease;
+}
+
+.checked {
+  background: #ff4b00; /* Fills solid black when completed */
+  border-color: #ff4b00;
+  position: relative;
+}
+
+/* Optional: Adding a white checkmark for the checked state */
+.checked::after {
+  content: '✓';
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  display: flex;
+  justify-content: center;
   align-items: center;
 }
 
-.title {
-  font-size: 2.5rem;
-  font-weight: Lighter;
-  margin-bottom: 1.5rem;
-}
-
-.cardGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.5rem;
+.details {
   width: 100%;
-  max-width: 900px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0,0,0,0.1);
+  font-size: 11px;
+  color: rgba(0,0,0,0.7);
 }
 
-@media (min-width: 768px) {
-  .cardGrid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-.view3D {
-  perspective: 1200px;
-  position: relative;
-  width: 100%;
-  min-height: 400px;
+.tabBar {
+  margin-top: auto;
+  display: flex;
+  border-top: 1px solid #1f1f1f;
+  padding: 10px 0;
 }
 
-.viewFace {
-  position: absolute;
-  width: 100%;
-  backface-visibility: hidden;
-  transform-origin: left center;
-  transition: transform 0.6s ease, opacity 0.6s ease;
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.4;
 }
 
-.show {
-  transform: rotateY(0deg);
+.activeTab {
   opacity: 1;
-  z-index: 2;
 }
 
-.hideLeft {
-  transform: rotateY(-90deg);
-  opacity: 0;
+.tabIcon {
+  width: 18px;
+  height: 18px;
+  background: #2a2a2a;
+  border-radius: 5px;
 }
 
-.hideRight {
-  transform: rotateY(90deg);
-  opacity: 0;
+.activeTab .tabIcon {
+  background: var(--accent-orange);
+}
+
+.tab span {
+  font-size: 7px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.activeTab span {
+  color: var(--accent-orange);
 }
