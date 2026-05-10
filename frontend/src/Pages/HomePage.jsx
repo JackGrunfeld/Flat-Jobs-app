@@ -39,7 +39,7 @@ export default function HomePage() {
     Molly: '#a6f948',
     Finn: '#fe7200',
     Josh: '#008cff',
-    Jack: '#00d01c',
+    Jack: '#87d000',
   };
   const getPersonColor = (person) => personColors[person] || 'transparent';
 
