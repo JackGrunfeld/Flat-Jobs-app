@@ -1,0 +1,154 @@
+/* Reuses core container styles from HousePage */
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #0a0a0a;
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 18px 14px;
+}
+
+.logo {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: transparent;
+  -webkit-text-stroke: 1.5px #FF4B00;
+  text-transform: uppercase;
+  text-align: center;
+  margin-bottom: 2px;
+}
+
+.pageTitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #FF4B00;
+  margin-bottom: 15px;
+}
+
+.sectionLabel {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #444;
+  display: block;
+  margin: 20px 0 5px;
+}
+
+.settingRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #1a1a1a;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #ccc;
+}
+
+.val { color: #FF4B00; }
+
+.toggleActive {
+  width: 34px;
+  height: 18px;
+  background: #FF4B00;
+  border-radius: 10px;
+  position: relative;
+}
+
+.toggleActive::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  right: 2px;
+}
+
+.toggleOff {
+  width: 34px;
+  height: 18px;
+  background: #2a2a2a;
+  border-radius: 10px;
+  position: relative;
+}
+
+.toggleOff::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+}
+
+.btnSignOut {
+  width: 100%;
+  background: #161616;
+  border: 1.5px solid rgba(255, 75, 0, 0.2);
+  border-radius: 12px;
+  padding: 14px;
+  color: #FF4B00;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 10px;
+}
+
+/* Navbar styles same as HousePage.module.css */
+.tabBar {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  background: #0a0a0a;
+  border-top: 1px solid #1f1f1f;
+  padding: 10px 0;
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0.4;
+}
+
+.activeTab { opacity: 1; }
+
+.tabIcon {
+  width: 20px;
+  height: 20px;
+  background: #2a2a2a;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.activeTab .tabIcon { background: #FF4B00; }
+
+.tab span {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #444;
+}
+
+.activeTab span { color: #FF4B00; }

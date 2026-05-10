@@ -1,7 +1,7 @@
 // utils/rosterHelper.js
 import { flatmates, tasks, bathroomAUsers, bathroomBUsers } from "../Data/cleaningData";
 
-export const baseDate = new Date(2026, 4, 11);
+export const baseDate = new Date(2026, 4, 4);
 
 // Mapping full task names to short locations
 const taskLocations = {

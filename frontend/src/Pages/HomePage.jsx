@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { taskDetails } from "../Data/cleaningData";
 import { fetchHistory, saveTask } from "../services/api";
 import { getAssignments, getWeekDates, getCurrentWeek } from "../utils/rosterHelpers";
 import styles from "./HomePage.module.css";
 
-// Person-specific colors from mockup
 const PERSON_COLORS = {
   Finn: "#FF7A00",
   Holly: "#FF8FE8",
@@ -14,10 +14,12 @@ const PERSON_COLORS = {
 };
 
 export default function HomePage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  
   const [week, setWeek] = useState(() => getCurrentWeek());  
   const [history, setHistory] = useState({});
   const [expandedTask, setExpandedTask] = useState(null);
-  const [view, setView] = useState("home");
 
   useEffect(() => {
     fetchHistory().then((res) => setHistory(res.data));
@@ -25,10 +27,12 @@ export default function HomePage() {
 
   const assignments = getAssignments(week);
 
-  // Derive stats for the dashboard cards
   const stats = Object.entries(assignments).reduce((acc, [person, task]) => {
     const done = history[week]?.[task]?.done;
-    done ? acc.done++ : acc.pending++;
+    // Only count as "Done" if the person actually has a task assigned
+    if (task && task !== "Off Duty") {
+      done ? acc.done++ : acc.pending++;
+    }
     return acc;
   }, { done: 0, pending: 0 });
 
@@ -47,7 +51,12 @@ export default function HomePage() {
         <h1 className={styles.logo}>TICK-IT</h1>
         <div className={styles.weekNav}>
           <button onClick={() => setWeek(w => Math.max(0, w - 1))}>←</button>
-          <span>{getWeekDates(week)}</span>
+          <div className={styles.weekInfo}>
+             <span className={styles.weekLabel}>
+                {week === getCurrentWeek() ? "THIS WEEK" : `WEEK ${week}`}
+             </span>
+             <span>{getWeekDates(week)}</span>
+          </div>
           <button onClick={() => setWeek(w => w + 1)}>→</button>
         </div>
       </header>
@@ -64,32 +73,40 @@ export default function HomePage() {
           </div>
         </div>
 
-        <h2 className={styles.sectionTitle}>This Week</h2>
+        <h2 className={styles.sectionTitle}>Chore Rotation</h2>
         
         <div className={styles.choreList}>
           {Object.entries(assignments).map(([person, task]) => {
             const isDone = history[week]?.[task]?.done;
+            const isOffDuty = task === "Off Duty";
+
             return (
               <div 
                 key={person} 
                 className={styles.choreCard}
-                style={{ backgroundColor: PERSON_COLORS[person] }}
+                style={{ backgroundColor: PERSON_COLORS[person] || "#2a2a2a" }}
                 onClick={() => setExpandedTask(expandedTask === person ? null : person)}
               >
+                {/* Aggressive Text Stack */}
                 <div className={styles.choreInfo}>
                   <span className={styles.choreName}>{person}</span>
                   <span className={styles.choreTask}>{task}</span>
                 </div>
-                <div 
-                  className={`${styles.checkbox} ${isDone ? styles.checked : ""}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleToggle(task, person, !isDone);
-                  }}
-                />
-                {expandedTask === person && (
+                
+                {/* Checkbox - Hidden if Off Duty */}
+                {!isOffDuty && (
+                  <div 
+                    className={`${styles.checkbox} ${isDone ? styles.checked : ""}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggle(task, person, !isDone);
+                    }}
+                  />
+                )}
+
+                {expandedTask === person && !isOffDuty && (
                   <div className={styles.details}>
-                    <p>{taskDetails[task] || "No extra instructions."}</p>
+                    <p>{taskDetails[task] || "Standard clean. Check logbook for details."}</p>
                   </div>
                 )}
               </div>
@@ -98,15 +115,20 @@ export default function HomePage() {
         </div>
       </main>
 
+      {/* Navigation Tab Bar */}
       <nav className={styles.tabBar}>
-        {['Home', 'Config', 'Settings'].map(tab => (
+        {[
+          { name: 'Home', path: '/' },
+          { name: 'House', path: '/house' },
+          { name: 'Settings', path: '/settings' }
+        ].map(tab => (
           <button 
-            key={tab} 
-            className={`${styles.tab} ${view === tab.toLowerCase() ? styles.activeTab : ''}`}
-            onClick={() => setView(tab.toLowerCase())}
+            key={tab.name} 
+            className={`${styles.tab} ${location.pathname === tab.path ? styles.activeTab : ''}`}
+            onClick={() => navigate(tab.path)}
           >
             <div className={styles.tabIcon} />
-            <span>{tab}</span>
+            <span>{tab.name}</span>
           </button>
         ))}
       </nav>
