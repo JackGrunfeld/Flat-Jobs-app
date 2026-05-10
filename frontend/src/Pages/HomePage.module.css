@@ -20,7 +20,7 @@
 }
 
 .weekNav {
-  font-size: 10px;
+  font-size: 15px;
   letter-spacing: 2px;
   color: var(--text-dim);
   text-transform: uppercase;
@@ -34,7 +34,7 @@
   border: none;
   color: var(--accent-orange);
   cursor: pointer;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .statRow {
