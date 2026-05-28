@@ -95,6 +95,77 @@
   left: 2px;
 }
 
+.header { margin-bottom: 4px; }
+
+.content { flex: 1; padding-bottom: 80px; }
+
+.colorPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 0 6px;
+}
+
+.colorSwatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.colorSwatch:active {
+  transform: scale(0.88);
+}
+
+.colorSwatchActive {
+  box-shadow: 0 0 0 3px #0a0a0a, 0 0 0 5px #FF4B00;
+}
+
+.colorSwatch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.colorPreview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 4px;
+}
+
+.colorDot {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.colorPreviewName {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.5px;
+}
+
+.notifHint {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: #FF4B00;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 6px 0 0;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.section {
+  margin-bottom: 4px;
+}
+
 .btnSignOut {
   width: 100%;
   background: #161616;
@@ -106,6 +177,80 @@
   text-transform: uppercase;
   letter-spacing: 2px;
   margin-top: 10px;
+  cursor: pointer;
+}
+
+.btnLeave {
+  width: 100%;
+  background: transparent;
+  border: 1.5px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 14px;
+  color: #555;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.confirmLeave {
+  margin-top: 10px;
+  background: #161616;
+  border: 1.5px solid #2a2a2a;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.confirmText {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 12px;
+}
+
+.confirmRow {
+  display: flex;
+  gap: 8px;
+}
+
+.btnLeaveConfirm {
+  flex: 1;
+  background: #3a0a00;
+  border: 1.5px solid #7a1500;
+  border-radius: 10px;
+  padding: 12px;
+  color: #ff6b3d;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.btnLeaveConfirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btnCancel {
+  flex: 1;
+  background: #1e1e1e;
+  border: 1.5px solid #2a2a2a;
+  border-radius: 10px;
+  padding: 12px;
+  color: #555;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
 }
 
 /* Navbar styles same as HousePage.module.css */
@@ -119,7 +264,7 @@
   display: flex;
   background: #0a0a0a;
   border-top: 1px solid #1f1f1f;
-  padding: 10px 0;
+  padding: 16px 0;
 }
 
 .tab {
@@ -129,26 +274,26 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  opacity: 0.4;
+  gap: 5px;
+  opacity: 0.6;
 }
 
 .activeTab { opacity: 1; }
 
 .tabIcon {
-  width: 20px;
-  height: 20px;
-  background: #2a2a2a;
+  width: 24px;
+  height: 24px;
+  background: #555;
   border-radius: 6px;
-  margin-bottom: 4px;
 }
 
 .activeTab .tabIcon { background: #FF4B00; }
 
 .tab span {
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
-  color: #444;
+  color: #888;
 }
 
 .activeTab span { color: #FF4B00; }

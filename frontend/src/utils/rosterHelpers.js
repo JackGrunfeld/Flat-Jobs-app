@@ -79,6 +79,22 @@ export function getAssignments(week) {
 
   return byAssignee;
 }
+// ------------ FREQUENCY-AWARE PERIOD INDEX -------------
+function getMonthIndexForWeek(weekIndex) {
+  const monday = new Date(baseDate);
+  monday.setDate(monday.getDate() + weekIndex * 7);
+  return (monday.getFullYear() - baseDate.getFullYear()) * 12 +
+    (monday.getMonth() - baseDate.getMonth());
+}
+
+export function getPeriodIndex(frequency, weekIndex) {
+  switch ((frequency || 'Weekly').toLowerCase()) {
+    case 'monthly': return getMonthIndexForWeek(weekIndex);
+    case 'daily':   return weekIndex * 7;
+    default:        return weekIndex;
+  }
+}
+
 // ------------ WEEK RANGE DISPLAY -------------
 export function getWeekDates(weekIndex) {
   const start = new Date(baseDate);
