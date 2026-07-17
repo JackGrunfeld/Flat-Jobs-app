@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api *)",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/deployments\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/deployments?per_page=100\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/commits/main/status\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/commits/Dynamic-Config-Build/status\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/commits/main/check-runs\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/commits/Dynamic-Config-Build/check-runs\")",
+      "Bash(curl -s \"https://api.github.com/repos/JackGrunfeld/Flat-Jobs-app/commits/7d4af46/check-suites\")",
+      "Bash(git push *)",
+      "Bash(git fetch *)"
+    ]
+  }
+}
