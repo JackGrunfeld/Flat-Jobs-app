@@ -1,6 +1,9 @@
 // Web Crypto PBKDF2 password hashing. Workers has no bcrypt/argon2 (no native
 // bindings), so PBKDF2-SHA256 via crypto.subtle is the standard fit.
-const ITERATIONS = 210_000;
+// 100,000 is the actual ceiling: the Workers runtime's PBKDF2 implementation
+// rejects iteration counts above 100,000 (confirmed via a live deploy — OWASP's
+// usual 210k+ recommendation assumes no such platform cap).
+const ITERATIONS = 100_000;
 const KEY_LENGTH_BITS = 256;
 
 function toBase64(bytes: ArrayBuffer): string {

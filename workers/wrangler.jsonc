@@ -8,7 +8,7 @@
     {
       "binding": "DB",
       "database_name": "flat-jobs-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "9d882f6f-7dec-42ee-912c-21cc8310d6b2",
       "migrations_dir": "migrations"
     }
   ],
