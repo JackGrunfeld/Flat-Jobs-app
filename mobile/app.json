@@ -37,7 +37,7 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "http://localhost:8787"
+      "apiBaseUrl": "https://flat-jobs-api.grunfeldjack.workers.dev"
     }
   }
 }
