@@ -9,8 +9,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.flatjobs.app",
-      "usesAppleSignIn": true
+      "bundleIdentifier": "com.flatjobs.app"
     },
     "android": {
       "package": "com.flatjobs.app",
@@ -27,14 +26,7 @@
     },
     "plugins": [
       "expo-secure-store",
-      "@react-native-google-signin/google-signin",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/icon.png",
-          "color": "#4F46E5"
-        }
-      ]
+      "@react-native-google-signin/google-signin"
     ],
     "extra": {
       "apiBaseUrl": "https://flat-jobs-api.grunfeldjack.workers.dev"

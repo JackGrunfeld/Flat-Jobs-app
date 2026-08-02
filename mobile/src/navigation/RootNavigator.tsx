@@ -5,13 +5,31 @@ import { useAuth } from "../context/AuthContext";
 import AuthScreen from "../screens/AuthScreen";
 import FlatSetupScreen from "../screens/FlatSetupScreen";
 import MainTabNavigator from "./MainTabNavigator";
+import type { User, Flat } from "../types";
 
-// Replaces app.js's AppShell conditional rendering. Same four states as the
-// web version, same shape (component swap, not a stack push) — a user who's
-// authenticated but flat-less never sees a "back" affordance into a route
-// that assumes they have a flat, because that route simply isn't mounted.
+// Set to true to skip login during UI development. Never commit as true.
+const DEV_BYPASS_AUTH = __DEV__ && false;
+
+const DEV_USER: User = { id: "dev-user", email: "dev@flatjobs.app", displayName: "Dev User" };
+const DEV_FLAT: Flat = {
+  id: "dev-flat",
+  name: "Dev Flat",
+  code: "DEV000",
+  ownerId: "dev-user",
+  members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2" }],
+  invitedEmails: [],
+};
+
 export default function RootNavigator() {
   const { authLoading, currentUser, userFlat } = useAuth();
+
+  if (DEV_BYPASS_AUTH) {
+    return (
+      <NavigationContainer>
+        <MainTabNavigator />
+      </NavigationContainer>
+    );
+  }
 
   if (authLoading) {
     return (
@@ -21,9 +39,12 @@ export default function RootNavigator() {
     );
   }
 
+  const user = currentUser ?? (DEV_BYPASS_AUTH ? DEV_USER : null);
+  const flat = userFlat ?? (DEV_BYPASS_AUTH ? DEV_FLAT : null);
+
   return (
     <NavigationContainer>
-      {!currentUser ? <AuthScreen /> : !userFlat ? <FlatSetupScreen /> : <MainTabNavigator />}
+      {!user ? <AuthScreen /> : !flat ? <FlatSetupScreen /> : <MainTabNavigator />}
     </NavigationContainer>
   );
 }
