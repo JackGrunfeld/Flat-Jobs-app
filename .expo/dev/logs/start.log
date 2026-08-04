@@ -1,0 +1,86 @@
+{"_e":"root:init","_t":1785565663881,"format":"v0-jsonl","version":"57.0.11"}
+{"_e":"env:mode","_t":1785565663882,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1785565663883,"mode":"development","files":[],"env":{}}
+{"_e":"root:init","_t":1785565713473,"format":"v0-jsonl","version":"57.0.11"}
+{"_e":"env:mode","_t":1785565713473,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1785565713475,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1785565713651,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../../../app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1785565713934,"serverRoot":"../../..","projectRoot":"../../..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1785565714123,"plugins":[]}
+{"_e":"metro:instantiate","_t":1785565714923,"atlas":false,"workers":6,"host":"::","port":8081}
+{"_e":"env:mode","_t":1785565718196,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"metro:bundling:started","_t":1785565733816,"id":"1","platform":"ios","environment":null,"entry":"frontend/src/index.js"}
+{"_e":"metro:bundling:progress","_t":1785565733817,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785565733825,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785565734501,"id":"1","progress":0.010000000000000002,"total":1,"current":1}
+{"_e":"metro:bundling:progress","_t":1785565734601,"id":"1","progress":0.36,"total":10,"current":6}
+{"_e":"metro:bundling:progress","_t":1785565734793,"id":"1","progress":0.48999999999999994,"total":10,"current":7}
+{"_e":"metro:bundling:progress","_t":1785565735019,"id":"1","progress":0.6400000000000001,"total":10,"current":8}
+{"_e":"metro:bundling:progress","_t":1785565735121,"id":"1","progress":0.6400000000000001,"total":18,"current":9}
+{"_e":"metro:bundling:progress","_t":1785565735273,"id":"1","progress":0.6400000000000001,"total":20,"current":11}
+{"_e":"metro:bundling:progress","_t":1785565735300,"id":"1","progress":0.6400000000000001,"total":20,"current":12}
+{"_e":"metro:bundling:progress","_t":1785565735400,"id":"1","progress":0.6523668639053255,"total":26,"current":21}
+{"_e":"metro:bundling:progress","_t":1785565735517,"id":"1","progress":0.7901234567901234,"total":27,"current":24}
+{"_e":"metro:bundling:progress","_t":1785565735578,"id":"1","progress":0.8573388203017833,"total":27,"current":25}
+{"_e":"metro:bundling:progress","_t":1785565735686,"id":"1","progress":0.8573388203017833,"total":31,"current":27}
+{"_e":"metro:bundling:progress","_t":1785565735785,"id":"1","progress":0.8573388203017833,"total":34,"current":31}
+{"_e":"metro:bundling:progress","_t":1785565735961,"id":"1","progress":0.8858131487889274,"total":34,"current":32}
+{"_e":"metro:bundling:progress","_t":1785565736063,"id":"1","progress":0.8919753086419753,"total":36,"current":34}
+{"_e":"metro:bundling:progress","_t":1785565736501,"id":"1","progress":0.945216049382716,"total":36,"current":35}
+{"_e":"metro:bundling:progress","_t":1785565736602,"id":"1","progress":0.948060941828255,"total":38,"current":37}
+{"_e":"metro:bundling:progress","_t":1785565736773,"id":"1","progress":0.999,"total":38,"current":38}
+{"_e":"metro:bundling:failed","_t":1785565736777,"id":"1","message":"Unable to resolve \"firebase/auth\" from \"frontend/src/contexts/AuthContext.jsx\"\n   6 |   signOut,\n   7 |   updateProfile,\n>  8 | } from \"firebase/auth\";\n     |         ^\n   9 | import { auth } from \"../firebaseConfig\";\n  10 | import {\n  11 |   getUserFlat,","importStack":"\u001b[1mImport stack:\u001b[22m\n\n\u001b[90m \u001b[39mfrontend/src/contexts/AuthContext.jsx\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"firebase/auth\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/app.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./contexts/AuthContext\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/index.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./app\"\u001b[39m\n\n\u001b[90m \u001b[39m\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./frontend/src/index\"\u001b[39m\n","filename":null,"targetModuleName":"firebase/auth","originModulePath":"frontend/src/contexts/AuthContext.jsx"}
+{"_e":"metro:bundling:started","_t":1785566004213,"id":"2","platform":"ios","environment":null,"entry":"frontend/src/index.js"}
+{"_e":"metro:bundling:progress","_t":1785566004217,"id":"2","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785566004227,"id":"2","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785566004328,"id":"2","progress":0.28994082840236685,"total":26,"current":14}
+{"_e":"metro:bundling:progress","_t":1785566004455,"id":"2","progress":0.5625,"total":28,"current":21}
+{"_e":"metro:bundling:failed","_t":1785566004488,"id":"2","message":"Unable to resolve \"firebase/auth\" from \"frontend/src/contexts/AuthContext.jsx\"\n   6 |   signOut,\n   7 |   updateProfile,\n>  8 | } from \"firebase/auth\";\n     |         ^\n   9 | import { auth } from \"../firebaseConfig\";\n  10 | import {\n  11 |   getUserFlat,","importStack":"\u001b[1mImport stack:\u001b[22m\n\n\u001b[90m \u001b[39mfrontend/src/contexts/AuthContext.jsx\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"firebase/auth\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/app.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./contexts/AuthContext\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/index.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./app\"\u001b[39m\n\n\u001b[90m \u001b[39m\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./frontend/src/index\"\u001b[39m\n","filename":null,"targetModuleName":"firebase/auth","originModulePath":"frontend/src/contexts/AuthContext.jsx"}
+{"_e":"root:init","_t":1785646257338,"format":"v0-jsonl","version":"57.0.11"}
+{"_e":"env:mode","_t":1785646257338,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1785646257341,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1785646259774,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../../../app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1785646260155,"serverRoot":"../../..","projectRoot":"../../..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1785646260323,"plugins":[]}
+{"_e":"metro:instantiate","_t":1785646261758,"atlas":false,"workers":6,"host":"::","port":8083}
+{"_e":"metro:client_log","_t":1785646304119,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThe project you requested requires a newer version of Expo Go.\n\nHow to fix this error:\n\nDownload the latest version of Expo Go from the App Store."]}
+{"_e":"metro:client_log","_t":1785646442819,"level":"error","data":["Project is incompatible with this version of Expo Go\n\nThe project you requested requires a newer version of Expo Go.\n\nHow to fix this error:\n\nDownload the latest version of Expo Go from the App Store."]}
+{"_e":"metro:bundling:started","_t":1785646454898,"id":"1","platform":"web","environment":null,"entry":"frontend/src/index.js"}
+{"_e":"metro:bundling:progress","_t":1785646454899,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785646454909,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785646455494,"id":"1","progress":0.010000000000000002,"total":1,"current":1}
+{"_e":"metro:bundling:progress","_t":1785646455594,"id":"1","progress":0.36,"total":10,"current":6}
+{"_e":"metro:bundling:progress","_t":1785646455816,"id":"1","progress":0.48999999999999994,"total":10,"current":7}
+{"_e":"metro:bundling:progress","_t":1785646455917,"id":"1","progress":0.48999999999999994,"total":22,"current":9}
+{"_e":"metro:bundling:progress","_t":1785646456019,"id":"1","progress":0.48999999999999994,"total":22,"current":11}
+{"_e":"metro:bundling:progress","_t":1785646456140,"id":"1","progress":0.48999999999999994,"total":26,"current":12}
+{"_e":"metro:bundling:progress","_t":1785646456264,"id":"1","progress":0.48999999999999994,"total":26,"current":13}
+{"_e":"metro:bundling:progress","_t":1785646456364,"id":"1","progress":0.48999999999999994,"total":30,"current":15}
+{"_e":"metro:bundling:progress","_t":1785646456470,"id":"1","progress":0.48999999999999994,"total":30,"current":16}
+{"_e":"metro:bundling:progress","_t":1785646456495,"id":"1","progress":0.48999999999999994,"total":30,"current":17}
+{"_e":"metro:bundling:progress","_t":1785646456595,"id":"1","progress":0.48999999999999994,"total":32,"current":19}
+{"_e":"metro:bundling:progress","_t":1785646456715,"id":"1","progress":0.48999999999999994,"total":33,"current":21}
+{"_e":"metro:bundling:progress","_t":1785646456976,"id":"1","progress":0.48999999999999994,"total":33,"current":22}
+{"_e":"metro:bundling:progress","_t":1785646457076,"id":"1","progress":0.8313148788927335,"total":34,"current":31}
+{"_e":"metro:bundling:progress","_t":1785646457272,"id":"1","progress":0.8858131487889274,"total":34,"current":32}
+{"_e":"metro:bundling:progress","_t":1785646457372,"id":"1","progress":0.8858131487889274,"total":38,"current":35}
+{"_e":"metro:bundling:progress","_t":1785646457478,"id":"1","progress":0.948060941828255,"total":38,"current":37}
+{"_e":"metro:bundling:progress","_t":1785646457680,"id":"1","progress":0.999,"total":38,"current":38}
+{"_e":"metro:bundling:failed","_t":1785646457687,"id":"1","message":"Unable to resolve \"@emailjs/browser\" from \"frontend/src/services/flatService.js\"\n  1 | import { db } from \"../firebaseConfig\";\n> 2 | import emailjs from \"@emailjs/browser\";\n    |                      ^\n  3 | import {\n  4 |   collection,\n  5 |   doc,","importStack":"\u001b[1mImport stack:\u001b[22m\n\n\u001b[90m \u001b[39mfrontend/src/services/flatService.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"@emailjs/browser\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/Pages/FlatSetupPage.jsx\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"../services/flatService\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/app.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./Pages/FlatSetupPage\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/index.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./app\"\u001b[39m\n\n\u001b[90m \u001b[39m\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./frontend/src/index\"\u001b[39m\n","filename":null,"targetModuleName":"@emailjs/browser","originModulePath":"frontend/src/services/flatService.js"}
+{"_e":"root:init","_t":1785666290740,"format":"v0-jsonl","version":"57.0.11"}
+{"_e":"env:mode","_t":1785666290741,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1785666290744,"mode":"development","files":[],"env":{}}
+{"_e":"devserver:start","_t":1785666291349,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../../../app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1785666292410,"serverRoot":"../../..","projectRoot":"../../..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1785666292988,"plugins":[]}
+{"_e":"metro:instantiate","_t":1785666294315,"atlas":false,"workers":6,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1785666330732,"id":"1","platform":"ios","environment":null,"entry":"frontend/src/index.js"}
+{"_e":"metro:bundling:progress","_t":1785666330736,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785666330754,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785666330870,"id":"1","progress":0.5377777777777777,"total":30,"current":22}
+{"_e":"metro:bundling:failed","_t":1785666330936,"id":"1","message":"Unable to resolve \"firebase/auth\" from \"frontend/src/contexts/AuthContext.jsx\"\n   6 |   signOut,\n   7 |   updateProfile,\n>  8 | } from \"firebase/auth\";\n     |         ^\n   9 | import { auth } from \"../firebaseConfig\";\n  10 | import {\n  11 |   getUserFlat,","importStack":"\u001b[1mImport stack:\u001b[22m\n\n\u001b[90m \u001b[39mfrontend/src/contexts/AuthContext.jsx\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"firebase/auth\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/app.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./contexts/AuthContext\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/index.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./app\"\u001b[39m\n\n\u001b[90m \u001b[39m\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./frontend/src/index\"\u001b[39m\n","filename":null,"targetModuleName":"firebase/auth","originModulePath":"frontend/src/contexts/AuthContext.jsx"}
+{"_e":"metro:bundling:started","_t":1785666352661,"id":"2","platform":"ios","environment":null,"entry":"frontend/src/index.js"}
+{"_e":"metro:bundling:progress","_t":1785666352672,"id":"2","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785666352722,"id":"2","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1785666352823,"id":"2","progress":0.5847750865051903,"total":34,"current":26}
+{"_e":"metro:bundling:failed","_t":1785666352882,"id":"2","message":"Unable to resolve \"firebase/auth\" from \"frontend/src/contexts/AuthContext.jsx\"\n   6 |   signOut,\n   7 |   updateProfile,\n>  8 | } from \"firebase/auth\";\n     |         ^\n   9 | import { auth } from \"../firebaseConfig\";\n  10 | import {\n  11 |   getUserFlat,","importStack":"\u001b[1mImport stack:\u001b[22m\n\n\u001b[90m \u001b[39mfrontend/src/contexts/AuthContext.jsx\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"firebase/auth\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/app.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./contexts/AuthContext\"\u001b[39m\n\n\u001b[90m \u001b[39mfrontend/src/index.js\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./app\"\u001b[39m\n\n\u001b[90m \u001b[39m\n\u001b[90m |\u001b[39m \u001b[36mimport\u001b[39m \u001b[32m\"./frontend/src/index\"\u001b[39m\n","filename":null,"targetModuleName":"firebase/auth","originModulePath":"frontend/src/contexts/AuthContext.jsx"}

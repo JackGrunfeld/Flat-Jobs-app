@@ -2,6 +2,7 @@ export type User = {
   id: string;
   email: string;
   displayName: string;
+  birthday: string | null;
 };
 
 export type FlatMember = {
@@ -37,13 +38,29 @@ export type Completion = {
   done: boolean;
 };
 
+export type ShoppingCategory = "Food" | "Utilities" | "Household" | "Other";
+
+// A Splitwise-style expense: cost + split required. Deliberately separate
+// from ShoppingListItem below — see ShoppingScreen's List/Splitwise split.
 export type ShoppingItem = {
   id: string;
   name: string;
   costCents: number;
   addedByUserId: string;
+  category: ShoppingCategory;
   splitWith: string[];
   createdAt: number;
+};
+
+// The plain shared "need to buy this" checklist — no cost, no split.
+export type ShoppingListItem = {
+  id: string;
+  name: string;
+  addedByUserId: string;
+  purchased: boolean;
+  createdAt: number;
+  upvoteCount: number;
+  upvotedByUserIds: string[];
 };
 
 export type Balance = {

@@ -8,12 +8,16 @@ import { requireFlatMembership } from "../middleware/flatMembership";
 const shopping = new Hono<AppEnv>();
 shopping.use("*", requireAuth, requireFlatMembership);
 
+const CATEGORIES = ["Food", "Utilities", "Household", "Other"] as const;
+type Category = (typeof CATEGORIES)[number];
+
 type ItemRow = {
   id: string;
   flat_id: string;
   name: string;
   cost_cents: number;
   added_by_user_id: string;
+  category: Category;
   created_at: number;
 };
 
@@ -27,6 +31,7 @@ async function loadItemDto(db: D1Database, item: ItemRow) {
     name: item.name,
     costCents: item.cost_cents,
     addedByUserId: item.added_by_user_id,
+    category: item.category,
     splitWith: (results ?? []).map((r) => r.user_id),
     createdAt: item.created_at,
   };
@@ -46,20 +51,22 @@ shopping.get("/", async (c) => {
 shopping.post("/", async (c) => {
   const flatId = c.req.param("flatId");
   const userId = c.get("userId");
-  const { name, costCents, splitWith } = await c.req.json<{
+  const { name, costCents, splitWith, category } = await c.req.json<{
     name?: string;
     costCents?: number;
     splitWith?: string[];
+    category?: string;
   }>();
   if (!name?.trim()) throw new HttpError(400, "name is required");
   if (!Number.isInteger(costCents) || costCents! <= 0) throw new HttpError(400, "costCents must be a positive integer");
+  const resolvedCategory: Category = CATEGORIES.includes(category as Category) ? (category as Category) : "Other";
 
   const itemId = newId();
   const createdAt = now();
   await c.env.DB.prepare(
-    "INSERT INTO shopping_items (id, flat_id, name, cost_cents, added_by_user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO shopping_items (id, flat_id, name, cost_cents, added_by_user_id, category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
   )
-    .bind(itemId, flatId, name.trim(), costCents, userId, createdAt)
+    .bind(itemId, flatId, name.trim(), costCents, userId, resolvedCategory, createdAt)
     .run();
 
   const splits = splitWith && splitWith.length > 0 ? splitWith : [userId];
@@ -77,6 +84,7 @@ shopping.post("/", async (c) => {
         name: name.trim(),
         cost_cents: costCents!,
         added_by_user_id: userId,
+        category: resolvedCategory,
         created_at: createdAt,
       }),
     },

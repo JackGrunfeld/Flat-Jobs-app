@@ -1,190 +1,234 @@
-import React, { useCallback, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, Animated, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
-import * as shoppingService from "../services/shoppingService";
-import * as settlementsService from "../services/settlementsService";
-import SettleUpModal from "../components/SettleUpModal";
-import type { ShoppingItem, Balance, Settlement } from "../types";
+import * as shoppingListService from "../services/shoppingListService";
+import ShoppingItemCard from "../components/ShoppingItemCard";
+import AddShoppingItemModal from "../components/AddShoppingItemModal";
+import AddItemFab, { FAB_SIZE } from "../components/AddItemFab";
+import SettingsButton from "../components/SettingsButton";
+import { useTheme } from "../context/ThemeContext";
+import type { ThemeColors } from "../theme/colors";
+import { fonts } from "../theme/fonts";
+import { typeScale } from "../theme/typography";
+import type { FlatMember, ShoppingListItem } from "../types";
 
-const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const FAB_MARGIN = 16;
+// How long a gap between scroll events has to be before we treat the user
+// as "stopped" and bring the FAB back — see handleScroll below.
+const SCROLL_STOP_DELAY = 150;
 
-// Port of ShoppingListPage.jsx: shopping list + who-owes-who. The balance
-// calculation itself now lives server-side (GET /flats/:flatId/balances,
-// see workers/src/routes/settlements.ts computeBalances) instead of being
-// recomputed on the client, and debts are settleable via the new
-// settlements ledger rather than being a read-only number.
+// The shared checklist as a stack of cards (avatar of whoever added it, name,
+// tick box) with a floating "+" FAB above the tab bar. The FAB drops out of
+// view while the list is actively scrolling and reappears once scrolling
+// stops or the bottom of the list is reached.
 export default function ShoppingScreen() {
-  const { currentUser, userFlat } = useAuth();
-  const [items, setItems] = useState<ShoppingItem[]>([]);
-  const [balances, setBalances] = useState<Balance[]>([]);
-  const [settlements, setSettlements] = useState<Settlement[]>([]);
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { userFlat, currentUser } = useAuth();
+  const [listItems, setListItems] = useState<ShoppingListItem[]>([]);
+  const [addVisible, setAddVisible] = useState(false);
+  const [openItemId, setOpenItemId] = useState<string | null>(null);
 
-  const [itemName, setItemName] = useState("");
-  const [itemCost, setItemCost] = useState("");
-  const [splitWith, setSplitWith] = useState<string[]>([]);
+  const fabHidden = useRef(new Animated.Value(0)).current; // 0 = shown, 1 = hidden
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [settleTarget, setSettleTarget] = useState<Balance | null>(null);
+  const memberById = useMemo(() => new Map((userFlat?.members ?? []).map((m) => [m.userId, m])), [userFlat]);
+
+  // Highest upvotes first — recomputed locally (not just trusted from the
+  // server's initial order) so an upvote visibly jumps a card to the top the
+  // moment it's tapped, before the request round-trips.
+  const sortedItems = useMemo(
+    () => [...listItems].sort((a, b) => b.upvoteCount - a.upvoteCount || b.createdAt - a.createdAt),
+    [listItems],
+  );
 
   const load = useCallback(async () => {
     if (!userFlat) return;
-    const [itemsRes, balancesRes, settlementsRes] = await Promise.all([
-      shoppingService.fetchShoppingItems(userFlat.id),
-      settlementsService.fetchBalances(userFlat.id),
-      settlementsService.fetchSettlements(userFlat.id),
-    ]);
-    setItems(itemsRes.items);
-    setBalances(balancesRes.balances);
-    setSettlements(settlementsRes.settlements);
+    const { items } = await shoppingListService.fetchShoppingListItems(userFlat.id);
+    setListItems(items);
   }, [userFlat]);
 
   useFocusEffect(
     useCallback(() => {
       load();
-      setSplitWith(currentUser ? [currentUser.id] : []);
-    }, [load, currentUser]),
+    }, [load]),
   );
 
-  if (!userFlat || !currentUser) return null;
+  // Typed-out orange subtitle (same treatment as HomeScreen's nudge line) —
+  // retypes whenever the count changes, whether that's the initial load or
+  // an item being added/removed while the screen is open.
+  const itemsText = `There ${sortedItems.length === 1 ? "is" : "are"} ${sortedItems.length} item${sortedItems.length === 1 ? "" : "s"} in ${userFlat?.name ?? ""}'s list`;
+  const [visibleChars, setVisibleChars] = useState(0);
+  const [cursorOn, setCursorOn] = useState(true);
 
-  const nameFor = (userId: string) => userFlat.members.find((m) => m.userId === userId)?.displayName ?? "Unknown";
+  useEffect(() => {
+    setVisibleChars(0);
+  }, [itemsText]);
 
-  const toggleSplit = (userId: string) => {
-    setSplitWith((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  useEffect(() => {
+    if (visibleChars >= itemsText.length) return;
+    const timer = setTimeout(() => setVisibleChars((c) => c + 1), 45);
+    return () => clearTimeout(timer);
+  }, [visibleChars, itemsText]);
+
+  useEffect(() => {
+    const blink = setInterval(() => setCursorOn((v) => !v), 500);
+    return () => clearInterval(blink);
+  }, []);
+
+  const showFab = useCallback(() => {
+    if (stopTimer.current) {
+      clearTimeout(stopTimer.current);
+      stopTimer.current = null;
+    }
+    Animated.spring(fabHidden, { toValue: 0, useNativeDriver: true, friction: 8, tension: 60 }).start();
+  }, [fabHidden]);
+
+  const hideFab = useCallback(() => {
+    Animated.timing(fabHidden, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+  }, [fabHidden]);
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const reachedBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24;
+
+      if (reachedBottom) {
+        showFab();
+        return;
+      }
+
+      hideFab();
+      if (stopTimer.current) clearTimeout(stopTimer.current);
+      stopTimer.current = setTimeout(showFab, SCROLL_STOP_DELAY);
+    },
+    [hideFab, showFab],
+  );
+
+  if (!userFlat) return null;
+
+  const addListItem = async (name: string) => {
+    // A "duplicate" name resolves to the existing item (now with one more
+    // vote) instead of a new row — merge it in place rather than prepending.
+    const { item } = await shoppingListService.addShoppingListItem(userFlat.id, { name });
+    setListItems((prev) => (prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [item, ...prev]));
   };
 
-  const addItem = async () => {
-    const costCents = Math.round(parseFloat(itemCost || "0") * 100);
-    if (!itemName.trim() || !Number.isFinite(costCents) || costCents <= 0) return;
-    await shoppingService.addShoppingItem(userFlat.id, { name: itemName.trim(), costCents, splitWith });
-    setItemName("");
-    setItemCost("");
-    await load();
+  const togglePurchased = async (item: ShoppingListItem) => {
+    setListItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, purchased: !i.purchased } : i)));
+    await shoppingListService.setShoppingListItemPurchased(userFlat.id, item.id, !item.purchased);
   };
 
-  const deleteItem = async (itemId: string) => {
-    await shoppingService.deleteShoppingItem(userFlat.id, itemId);
-    await load();
+  const toggleUpvote = async (item: ShoppingListItem) => {
+    if (!currentUser) return;
+    const alreadyUpvoted = item.upvotedByUserIds.includes(currentUser.id);
+    setListItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id
+          ? {
+              ...i,
+              upvoteCount: i.upvoteCount + (alreadyUpvoted ? -1 : 1),
+              upvotedByUserIds: alreadyUpvoted
+                ? i.upvotedByUserIds.filter((id) => id !== currentUser.id)
+                : [...i.upvotedByUserIds, currentUser.id],
+            }
+          : i,
+      ),
+    );
+    const { item: updated } = await shoppingListService.toggleShoppingListItemUpvote(userFlat.id, item.id);
+    setListItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
   };
 
-  const submitSettlement = async (amountCents: number, note: string) => {
-    if (!settleTarget) return;
-    await settlementsService.settleUp(userFlat.id, { toUserId: settleTarget.owesUserId, amountCents, note });
-    setSettleTarget(null);
-    await load();
+  const deleteListItem = async (itemId: string) => {
+    setOpenItemId((prev) => (prev === itemId ? null : prev));
+    setListItems((prev) => prev.filter((i) => i.id !== itemId));
+    await shoppingListService.deleteShoppingListItem(userFlat.id, itemId);
   };
 
-  const myBalances = balances.filter((b) => b.userId === currentUser.id || b.owesUserId === currentUser.id);
+  // This screen's own container already stops right above the tab bar (the
+  // tab bar isn't drawn `position: absolute` over it), so "bottom: 0" here
+  // is already just above the tabs — no tab bar height to add in.
+  const fabBottom = FAB_MARGIN;
+  // Distance needed to carry the FAB from its resting spot down past the
+  // bottom of the screen (and behind the tab bar) when hidden.
+  const fabTranslateY = fabHidden.interpolate({ inputRange: [0, 1], outputRange: [0, fabBottom + FAB_SIZE + 20] });
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.sectionTitle}>Balances</Text>
-      {myBalances.length === 0 && <Text style={styles.empty}>All settled up.</Text>}
-      {myBalances.map((b, i) => {
-        const iOwe = b.userId === currentUser.id;
-        return (
-          <View key={i} style={styles.balanceRow}>
-            <Text style={styles.balanceText}>
-              {iOwe ? `You owe ${nameFor(b.owesUserId)}` : `${nameFor(b.userId)} owes you`}{" "}
-              <Text style={styles.balanceAmount}>{formatMoney(b.amountCents)}</Text>
-            </Text>
-            {iOwe && (
-              <Pressable style={styles.settleButton} onPress={() => setSettleTarget(b)}>
-                <Text style={styles.settleButtonText}>Settle up</Text>
-              </Pressable>
-            )}
-          </View>
-        );
-      })}
+    <View style={styles.root}>
+      <Animated.ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: fabBottom + FAB_SIZE + 24 }}
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      >
+        <Text style={styles.pageTitle}>Shopping List</Text>
 
-      <Text style={styles.sectionTitle}>Shopping list</Text>
-      {items.map((item) => (
-        <View key={item.id} style={styles.itemRow}>
-          <View style={styles.flex1}>
-            <Text style={styles.itemName}>{item.name}</Text>
-            <Text style={styles.itemMeta}>
-              {nameFor(item.addedByUserId)} paid {formatMoney(item.costCents)}, split {item.splitWith.length}{" "}
-              way{item.splitWith.length === 1 ? "" : "s"}
-            </Text>
-          </View>
-          <Pressable onPress={() => deleteItem(item.id)}>
-            <Text style={styles.deleteText}>Delete</Text>
-          </Pressable>
-        </View>
-      ))}
+        <Text style={styles.nudge}>
+          {itemsText.slice(0, visibleChars)}
+          <Text style={[styles.cursor, { opacity: cursorOn ? 1 : 0 }]}>▌</Text>
+        </Text>
 
-      <Text style={styles.sectionTitle}>Add an item</Text>
-      <TextInput style={styles.input} placeholder="Item name" value={itemName} onChangeText={setItemName} />
-      <TextInput
-        style={styles.input}
-        placeholder="Cost"
-        keyboardType="decimal-pad"
-        value={itemCost}
-        onChangeText={setItemCost}
-      />
-      <Text style={styles.subLabel}>Split with:</Text>
-      <View style={styles.row}>
-        {userFlat.members.map((m) => (
-          <Pressable
-            key={m.userId}
-            style={[styles.chip, splitWith.includes(m.userId) && styles.chipActive]}
-            onPress={() => toggleSplit(m.userId)}
-          >
-            <Text style={[styles.chipText, splitWith.includes(m.userId) && styles.chipTextActive]}>
-              {m.displayName}
-            </Text>
-          </Pressable>
+        <View style={styles.divider} />
+
+        {sortedItems.length === 0 && <Text style={styles.emptyText}>Nothing on the list yet.</Text>}
+        {sortedItems.map((item) => (
+          <ShoppingItemCard
+            key={item.id}
+            item={item}
+            addedBy={memberById.get(item.addedByUserId)}
+            upvoters={item.upvotedByUserIds.map((id) => memberById.get(id)).filter((m): m is FlatMember => !!m)}
+            upvoted={!!currentUser && item.upvotedByUserIds.includes(currentUser.id)}
+            open={openItemId === item.id}
+            onToggle={() => togglePurchased(item)}
+            onDelete={() => deleteListItem(item.id)}
+            onUpvote={() => toggleUpvote(item)}
+            onSwipeOpen={() => setOpenItemId(item.id)}
+            onSwipeClose={() => setOpenItemId((prev) => (prev === item.id ? null : prev))}
+          />
         ))}
-      </View>
-      <Pressable style={styles.primaryButton} onPress={addItem}>
-        <Text style={styles.primaryButtonText}>Add item</Text>
-      </Pressable>
+      </Animated.ScrollView>
 
-      {settlements.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>Settlement history</Text>
-          {settlements.map((s) => (
-            <Text key={s.id} style={styles.historyRow}>
-              {nameFor(s.fromUserId)} → {nameFor(s.toUserId)}: {formatMoney(s.amountCents)}
-              {s.note ? ` (${s.note})` : ""}
-            </Text>
-          ))}
-        </>
-      )}
-
-      <SettleUpModal
-        visible={!!settleTarget}
-        counterpartName={settleTarget ? nameFor(settleTarget.owesUserId) : ""}
-        suggestedAmountCents={settleTarget?.amountCents ?? 0}
-        onClose={() => setSettleTarget(null)}
-        onSubmit={submitSettlement}
-      />
-    </ScrollView>
+      <AddItemFab bottom={fabBottom} translateY={fabTranslateY} onPress={() => setAddVisible(true)} />
+      <AddShoppingItemModal visible={addVisible} onClose={() => setAddVisible(false)} onAdd={addListItem} />
+      <SettingsButton />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
-  sectionTitle: { fontSize: 14, fontWeight: "700", color: "#6B7280", marginTop: 20, marginBottom: 8, textTransform: "uppercase" },
-  empty: { color: "#9CA3AF" },
-  balanceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "#F9FAFB", borderRadius: 10, padding: 12, marginBottom: 8 },
-  balanceText: { fontSize: 15, flex: 1 },
-  balanceAmount: { fontWeight: "700" },
-  settleButton: { backgroundColor: "#4F46E5", borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
-  settleButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  itemRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 10, padding: 12, marginBottom: 8 },
-  flex1: { flex: 1 },
-  itemName: { fontSize: 15, fontWeight: "600" },
-  itemMeta: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  deleteText: { color: "#DC2626", fontWeight: "600" },
-  input: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 10, fontSize: 15, marginBottom: 8 },
-  subLabel: { fontSize: 13, color: "#6B7280", marginBottom: 6 },
-  row: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
-  chipActive: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
-  chipText: { fontSize: 13 },
-  chipTextActive: { color: "#fff" },
-  primaryButton: { backgroundColor: "#4F46E5", borderRadius: 8, padding: 14, alignItems: "center", marginTop: 16 },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  historyRow: { fontSize: 13, color: "#6B7280", paddingVertical: 4 },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
+  pageTitle: {
+    fontFamily: fonts.regular,
+    fontSize: typeScale.subheading,
+    letterSpacing: 3,
+    color: colors.textMuted,
+    marginBottom: 16,
+  },
+  nudge: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    letterSpacing: 0.5,
+    color: colors.accent,
+  },
+  cursor: { fontFamily: fonts.bold, color: colors.accent },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  emptyText: {
+    fontFamily: fonts.regular,
+    fontSize: typeScale.body,
+    color: colors.textMuted,
+    fontStyle: "italic",
+    textAlign: "center",
+    marginTop: 20,
+  },
+  });
+}

@@ -10,13 +10,14 @@ type AuthContextValue = {
   currentUser: User | null;
   userFlat: Flat | null;
   authLoading: boolean;
-  signup: (name: string, email: string, password: string) => Promise<void>;
+  signup: (name: string, email: string, password: string, birthday: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
   loginWithApple: (identityToken: string, email?: string | null, fullName?: string | null) => Promise<void>;
   logout: () => Promise<void>;
   refreshFlat: () => Promise<Flat | null>;
   leaveFlat: () => Promise<void>;
+  updateDisplayName: (name: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -72,8 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerForPushNotificationsAsync().catch(() => {});
   };
 
-  const signup = async (name: string, email: string, password: string) => {
-    const session = await authService.signup(email, password, name);
+  const signup = async (name: string, email: string, password: string, birthday: string) => {
+    const session = await authService.signup(email, password, name, birthday);
     await establishSession(session);
     // Best-effort: pick up a pending invite immediately. FlatSetupScreen
     // handles the retry-poll for the case where the invite hasn't propagated
@@ -113,6 +114,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserFlat(null);
   };
 
+  const updateDisplayName = async (name: string) => {
+    const { user } = await authService.updateDisplayName(name);
+    setCurrentUser(user);
+    // Flatmate/chore-rotation names are joined server-side from users.display_name,
+    // so this client's own flat view needs a refetch to pick up the change too.
+    await refreshFlat();
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -126,6 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         refreshFlat,
         leaveFlat,
+        updateDisplayName,
       }}
     >
       {children}

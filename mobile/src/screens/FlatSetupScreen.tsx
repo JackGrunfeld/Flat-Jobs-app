@@ -1,16 +1,36 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import * as flatService from "../services/flatService";
 import { ApiError } from "../services/apiClient";
+import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
+import { useTheme } from "../context/ThemeContext";
+import type { ThemeColors } from "../theme/colors";
+import { fonts } from "../theme/fonts";
+import { typeScale } from "../theme/typography";
 
 type FlowView = "choice" | "create" | "created" | "join";
+
+const WELCOME_WORDS = [
+  "Welcome!",
+  "Bienvenue!",
+  "Willkommen!",
+  "¡Bienvenido!",
+  "Benvenuto!",
+  "Welkom!",
+  "Bem-vindo!",
+  "Witaj!",
+  "Tervetuloa!",
+  "Velkommen!",
+];
 
 // Port of FlatSetupPage.jsx: create-or-join-flat flow, plus an on-mount poll
 // for a pending email invite (e.g. an invite sent moments before this user
 // finished signing up — checkPendingInvite may not see it yet on the very
 // first call, hence the one retry after a short delay).
 export default function FlatSetupScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { refreshFlat, logout } = useAuth();
   const [view, setView] = useState<FlowView>("choice");
   const [flatName, setFlatName] = useState("");
@@ -19,6 +39,7 @@ export default function FlatSetupScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const polledOnce = useRef(false);
+  const { text: welcomeText, cursorOn: welcomeCursorOn } = useTypewriterCycle(WELCOME_WORDS);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +90,10 @@ export default function FlatSetupScreen() {
     <View style={styles.container}>
       {view === "choice" && (
         <>
-          <Text style={styles.title}>Welcome!</Text>
+          <Text style={styles.title}>
+            {welcomeText}
+            <Text style={[styles.titleCursor, { opacity: welcomeCursorOn ? 1 : 0 }]}>▌</Text>
+          </Text>
           <Text style={styles.subtitle}>Create a new flat, or join one with a code.</Text>
           <Pressable style={styles.primaryButton} onPress={() => setView("create")}>
             <Text style={styles.primaryButtonText}>Create a flat</Text>
@@ -86,7 +110,13 @@ export default function FlatSetupScreen() {
       {view === "create" && (
         <>
           <Text style={styles.title}>Name your flat</Text>
-          <TextInput style={styles.input} placeholder="e.g. 12 Main St" value={flatName} onChangeText={setFlatName} />
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. 12 Main St"
+            placeholderTextColor="#c9cdd4"
+            value={flatName}
+            onChangeText={setFlatName}
+          />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable style={styles.primaryButton} onPress={handleCreate} disabled={busy}>
             {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create</Text>}
@@ -116,6 +146,7 @@ export default function FlatSetupScreen() {
           <TextInput
             style={[styles.input, styles.codeInput]}
             placeholder="ABC123"
+            placeholderTextColor="#c9cdd4"
             autoCapitalize="characters"
             value={joinCode}
             onChangeText={setJoinCode}
@@ -133,19 +164,22 @@ export default function FlatSetupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, gap: 12 },
-  title: { fontSize: 26, fontWeight: "700", textAlign: "center" },
-  subtitle: { fontSize: 15, color: "#6B7280", textAlign: "center", marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 12, fontSize: 16 },
-  codeInput: { textAlign: "center", letterSpacing: 4, fontSize: 20, fontWeight: "600" },
-  error: { color: "#DC2626", textAlign: "center" },
-  primaryButton: { backgroundColor: "#4F46E5", borderRadius: 8, padding: 14, alignItems: "center" },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  secondaryButton: { borderWidth: 1, borderColor: "#4F46E5", borderRadius: 8, padding: 14, alignItems: "center" },
-  secondaryButtonText: { color: "#4F46E5", fontSize: 16, fontWeight: "600" },
-  backText: { color: "#6B7280", textAlign: "center", marginTop: 8 },
-  logoutText: { color: "#9CA3AF", textAlign: "center", marginTop: 24 },
-  codeBox: { backgroundColor: "#EEF2FF", borderRadius: 12, padding: 20, alignItems: "center", marginBottom: 8 },
-  code: { fontSize: 32, fontWeight: "700", letterSpacing: 6, color: "#4F46E5" },
-});
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bg },
+  title: { fontFamily: fonts.bold, fontSize: typeScale.subheading, textAlign: "center", color: colors.text, marginBottom: 12 },
+  titleCursor: { color: colors.accent },
+  subtitle: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted, textAlign: "center", marginBottom: 12 },
+  input: { fontFamily: fonts.regular, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, padding: 12, fontSize: typeScale.body, color: colors.text },
+  codeInput: { fontFamily: fonts.bold, textAlign: "center", letterSpacing: 4, fontSize: typeScale.body },
+  error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
+  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
+  primaryButtonText: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
+  secondaryButton: { borderWidth: 1, borderColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
+  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accent, fontSize: typeScale.body },
+  backText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 8 },
+  logoutText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 24 },
+  codeBox: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, alignItems: "center", marginBottom: 8 },
+  code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: colors.accent },
+  });
+}

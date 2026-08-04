@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "��#\u0000 \u0000F\u0000l\u0000a\u0000t\u0000-\u0000J\u0000o\u0000b\u0000s\u0000-\u0000a\u0000p\u0000p\u0000\r\u0000 \u0000",
   "main": "frontend/src/index.js",
-  
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
@@ -24,9 +23,15 @@
   "dependencies": {
     "body-parser": "^2.2.2",
     "cors": "^2.8.6",
+    "expo": "^57.0.9",
     "express": "^5.2.1",
     "framer-motion": "^12.35.0",
     "react-router-dom": "^7.13.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "wrangler": "^4.118.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.4",
+    "typescript": "~6.0.3"
   }
 }

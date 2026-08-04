@@ -21,7 +21,16 @@ type UserRow = {
   password_hash: string | null;
   password_salt: string | null;
   password_iterations: number | null;
+  birthday: string | null;
 };
+
+// YYYY-MM-DD, and not in the future.
+function isValidBirthday(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.getTime() <= Date.now();
+}
 
 async function issueSession(db: D1Database, userId: string, jwtSecret: string) {
   const accessToken = await signAccessToken(userId, jwtSecret);
@@ -42,17 +51,21 @@ async function issueSession(db: D1Database, userId: string, jwtSecret: string) {
 }
 
 function userDto(row: UserRow) {
-  return { id: row.id, email: row.email, displayName: row.display_name };
+  return { id: row.id, email: row.email, displayName: row.display_name, birthday: row.birthday };
 }
 
 auth.post("/signup", async (c) => {
-  const { email, password, displayName } = await c.req.json<{
+  const { email, password, displayName, birthday } = await c.req.json<{
     email?: string;
     password?: string;
     displayName?: string;
+    birthday?: string;
   }>();
-  if (!email || !password || !displayName) {
-    throw new HttpError(400, "email, password, and displayName are required");
+  if (!email || !password || !displayName || !birthday) {
+    throw new HttpError(400, "email, password, displayName, and birthday are required");
+  }
+  if (!isValidBirthday(birthday)) {
+    throw new HttpError(400, "birthday must be a valid past date (YYYY-MM-DD)");
   }
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -64,15 +77,15 @@ auth.post("/signup", async (c) => {
   const { hash, salt, iterations } = await hashPassword(password);
   const userId = newId();
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, display_name, password_hash, password_salt, password_iterations, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, password_iterations, birthday, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(userId, normalizedEmail, displayName.trim(), hash, salt, iterations, now())
+    .bind(userId, normalizedEmail, displayName.trim(), hash, salt, iterations, birthday, now())
     .run();
 
   const session = await issueSession(c.env.DB, userId, c.env.JWT_SECRET);
   return c.json({
-    user: { id: userId, email: normalizedEmail, displayName: displayName.trim() },
+    user: { id: userId, email: normalizedEmail, displayName: displayName.trim(), birthday },
     ...session,
   });
 });
@@ -129,7 +142,15 @@ async function upsertOAuthUser(
       .prepare("INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)")
       .bind(userId, email, displayName || email.split("@")[0], now())
       .run();
-    user = { id: userId, email, display_name: displayName || email.split("@")[0], password_hash: null, password_salt: null, password_iterations: null };
+    user = {
+      id: userId,
+      email,
+      display_name: displayName || email.split("@")[0],
+      password_hash: null,
+      password_salt: null,
+      password_iterations: null,
+      birthday: null,
+    };
   }
 
   await db
@@ -207,6 +228,22 @@ auth.get("/me", requireAuth, async (c) => {
   const row = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?")
     .bind(c.get("userId"))
     .first<UserRow>();
+  if (!row) throw new HttpError(404, "User not found");
+  return c.json({ user: userDto(row) });
+});
+
+auth.patch("/me", requireAuth, async (c) => {
+  const { displayName } = await c.req.json<{ displayName?: string }>();
+  if (!displayName || !displayName.trim()) {
+    throw new HttpError(400, "displayName is required");
+  }
+
+  const userId = c.get("userId");
+  await c.env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
+    .bind(displayName.trim(), userId)
+    .run();
+
+  const row = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first<UserRow>();
   if (!row) throw new HttpError(404, "User not found");
   return c.json({ user: userDto(row) });
 });

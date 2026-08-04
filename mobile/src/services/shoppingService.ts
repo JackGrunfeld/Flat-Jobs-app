@@ -1,12 +1,12 @@
 import { apiFetch } from "./apiClient";
-import type { ShoppingItem } from "../types";
+import type { ShoppingCategory, ShoppingItem } from "../types";
 
 export const fetchShoppingItems = (flatId: string) =>
   apiFetch<{ items: ShoppingItem[] }>(`/flats/${flatId}/shopping-items`);
 
 export const addShoppingItem = (
   flatId: string,
-  input: { name: string; costCents: number; splitWith: string[] },
+  input: { name: string; costCents: number; splitWith: string[]; category: ShoppingCategory },
 ) =>
   apiFetch<{ item: ShoppingItem }>(`/flats/${flatId}/shopping-items`, {
     method: "POST",

@@ -9,6 +9,7 @@ import flatsRoutes from "./routes/flats";
 import choresRoutes from "./routes/chores";
 import completionsRoutes from "./routes/completions";
 import shoppingRoutes from "./routes/shopping";
+import shoppingListItemsRoutes from "./routes/shoppingListItems";
 import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
 
@@ -41,6 +42,7 @@ app.route("/flats", flatsRoutes);
 app.route("/flats/:flatId/chores", choresRoutes);
 app.route("/flats/:flatId/completions", completionsRoutes);
 app.route("/flats/:flatId/shopping-items", shoppingRoutes);
+app.route("/flats/:flatId/shopping-list-items", shoppingListItemsRoutes);
 app.route("/flats/:flatId/settlements", settlementsRoutes);
 
 export default app;
