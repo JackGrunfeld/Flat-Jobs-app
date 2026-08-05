@@ -17,7 +17,7 @@ const DEV_FLAT: Flat = {
   name: "Dev Flat",
   code: "DEV000",
   ownerId: "dev-user",
-  members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2" }],
+  members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2", birthday: null }],
   invitedEmails: [],
 };
 

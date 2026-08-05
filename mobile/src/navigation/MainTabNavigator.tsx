@@ -8,6 +8,7 @@ import HomeScreen from "../screens/HomeScreen";
 import HouseScreen from "../screens/HouseScreen";
 import ShoppingScreen from "../screens/ShoppingScreen";
 import SplitwiseScreen from "../screens/SplitwiseScreen";
+import SwipeableTabScreen from "./SwipeableTabScreen";
 import { useTheme } from "../context/ThemeContext";
 import { withAlpha } from "../theme/colors";
 
@@ -32,9 +33,19 @@ export default function MainTabNavigator() {
 
   return (
     <Tab.Navigator
+      // Every tab screen is wrapped so a horizontal drag walks to the
+      // neighbouring tab; the bar's buttons still work exactly as before.
+      screenLayout={({ navigation, route, children }) => (
+        <SwipeableTabScreen navigation={navigation} route={route}>
+          {children}
+        </SwipeableTabScreen>
+      )}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
+        // Slides the outgoing/incoming screen in the direction of travel, so a
+        // swipe (and a tap) reads as movement between tabs rather than a cut.
+        animation: "shift",
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
         tabBarStyle: {

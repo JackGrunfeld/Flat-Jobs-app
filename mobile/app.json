@@ -26,7 +26,12 @@
     },
     "plugins": [
       "expo-secure-store",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.404201488379-06qjpetsa0i8qsl7pqlogt50haqq7caq"
+        }
+      ],
       "expo-font",
       "@react-native-community/datetimepicker"
     ],

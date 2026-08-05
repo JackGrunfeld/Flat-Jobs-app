@@ -15,8 +15,31 @@ import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import SettingsButton from "../components/SettingsButton";
+import CalendarStrip from "../components/CalendarStrip";
+import {
+  addMonths,
+  buildBirthdayEventsInRange,
+  mergeCalendarEvents,
+  startOfToday,
+  toCalendarEvents,
+  toISODate,
+} from "../utils/calendarEvents";
+import * as eventsService from "../services/eventsService";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
-import type { Chore, Completion, ShoppingItem, Balance } from "../types";
+import type { Chore, Completion, ShoppingItem, Balance, FlatEvent, NewFlatEvent } from "../types";
+
+// Months either side of today that the calendar can be swiped to. Doubles as
+// the window birthday events are built over, so every month reachable by a
+// swipe has its rings — the two must stay in step.
+const CALENDAR_MONTH_RANGE = 12;
+
+// Full height of each stacked card, and how much of it stays visible once the
+// next card overlaps it. The exposed band is what carries that card's
+// information, so it has to fit label + stat + caption.
+// EXPOSED_HEIGHT has to clear padding + icon row + stat + caption (~102pt) or
+// the covered cards lose their caption to the overlap.
+const CARD_HEIGHT = 146;
+const EXPOSED_HEIGHT = 112;
 
 type Segment = { text: string; bold?: boolean };
 type Nav = BottomTabNavigationProp<MainTabParamList>;
@@ -62,36 +85,54 @@ function RevealTile({ delay, children }: { delay: number; children: React.ReactN
   );
 }
 
-function StatTile({
+// One layer of the stack. Every card is CARD_HEIGHT tall, but each is pulled
+// up over the one before so only EXPOSED_HEIGHT of it shows — enough for the
+// label, stat and caption. The bottom card is the only one shown in full.
+function StackCard({
+  index,
   icon,
   label,
   stat,
   caption,
   tone,
-  wide,
+  toneSoft,
   onPress,
   styles,
-  mutedColor,
 }: {
-  icon: React.ReactNode;
+  index: number;
+  icon: (color: string) => React.ReactNode;
   label: string;
   stat: string;
   caption: string;
-  tone: TileTone;
-  wide?: boolean;
+  // The metric's colour. Carried by the outline, icon chip and stat rather
+  // than by a solid fill — the surface stays neutral, the way every other
+  // card on this screen reads.
+  tone: string;
+  toneSoft: string;
   onPress: () => void;
   styles: ReturnType<typeof createStyles>;
-  mutedColor: string;
 }) {
   return (
-    <Pressable style={[styles.tile, wide && styles.tileWide, { borderColor: tone.soft }]} onPress={onPress}>
-      <View style={styles.tileTopRow}>
-        <View style={[styles.tileIcon, { backgroundColor: tone.soft }]}>{icon}</View>
-        <Ionicons name="arrow-forward" size={14} color={mutedColor} />
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.stackCard,
+        {
+          borderColor: tone,
+          // First card sits flush; the rest overlap the card above.
+          marginTop: index === 0 ? 0 : EXPOSED_HEIGHT - CARD_HEIGHT,
+          // Later siblings already paint on top on iOS; this makes the order
+          // explicit and holds on Android too.
+          zIndex: index,
+        },
+      ]}
+    >
+      <View style={styles.stackHeader}>
+        <View style={[styles.stackIcon, { backgroundColor: toneSoft }]}>{icon(tone)}</View>
+        <Text style={[styles.stackLabel, { color: tone }]}>{label}</Text>
       </View>
-      <Text style={[styles.tileLabel, { color: tone.fg }]}>{label}</Text>
-      <Text style={[styles.tileStat, { color: tone.fg }]}>{stat}</Text>
-      <Text style={styles.tileCaption}>{caption}</Text>
+      <Text style={[styles.stackStat, { color: tone }]}>{stat}</Text>
+      <Text style={styles.stackCaption}>{caption}</Text>
     </Pressable>
   );
 }
@@ -115,10 +156,31 @@ export default function HomeScreen() {
   const [visibleChars, setVisibleChars] = useState(0);
   const [cursorOn, setCursorOn] = useState(true);
 
+  // Refreshed on focus rather than memoised once, so the strip rolls over if
+  // the app sits open past midnight.
+  const [today, setToday] = useState(startOfToday);
+
   const [chores, setChores] = useState<Chore[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
+  const [flatEvents, setFlatEvents] = useState<FlatEvent[]>([]);
+
+  // The window the calendar can be swiped across — the same bounds the
+  // birthday events are derived over, so both sources cover the same months.
+  const calendarWindow = useMemo(
+    () => ({
+      from: toISODate(addMonths(today, -CALENDAR_MONTH_RANGE)),
+      to: toISODate(addMonths(today, CALENDAR_MONTH_RANGE)),
+    }),
+    [today],
+  );
+
+  const loadEvents = useCallback(async () => {
+    if (!userFlat) return;
+    const { events } = await eventsService.fetchEvents(userFlat.id, calendarWindow.from, calendarWindow.to);
+    setFlatEvents(events);
+  }, [userFlat, calendarWindow]);
 
   const load = useCallback(async () => {
     if (!userFlat) return;
@@ -127,16 +189,35 @@ export default function HomeScreen() {
       completionsService.fetchCompletions(userFlat.id),
       shoppingService.fetchShoppingItems(userFlat.id),
       settlementsService.fetchBalances(userFlat.id),
+      // Kept out of the destructure: an older deployed API without /events
+      // shouldn't blank the whole dashboard, so this one is allowed to fail.
+      loadEvents().catch(() => {}),
     ]);
     setChores(choresRes.chores);
     setCompletions(completionsRes.completions);
     setItems(itemsRes.items);
     setBalances(balancesRes.balances);
-  }, [userFlat]);
+  }, [userFlat, loadEvents]);
+
+  const createEvent = useCallback(
+    async (input: NewFlatEvent) => {
+      if (!userFlat) return;
+      await eventsService.createEvent(userFlat.id, input);
+      await loadEvents();
+    },
+    [userFlat, loadEvents],
+  );
 
   useFocusEffect(
     useCallback(() => {
       setVisibleChars(0);
+      // Keeps the same Date instance while the calendar day hasn't changed.
+      // A fresh object every focus would feed `calendarWindow` -> `loadEvents`
+      // -> `load` -> this very callback, re-running the effect forever.
+      setToday((prev) => {
+        const refreshed = startOfToday();
+        return prev.getTime() === refreshed.getTime() ? prev : refreshed;
+      });
       load();
     }, [load]),
   );
@@ -193,6 +274,20 @@ export default function HomeScreen() {
 
   const { text: nudgeText, cursorOn: nudgeCursorOn } = useTypewriterCycle(nudges, { pauseMs: 2200 });
 
+  const calendarEvents = useMemo(
+    () =>
+      mergeCalendarEvents(
+        buildBirthdayEventsInRange(
+          userFlat?.members ?? [],
+          currentUser,
+          addMonths(today, -CALENDAR_MONTH_RANGE),
+          addMonths(today, CALENDAR_MONTH_RANGE),
+        ),
+        toCalendarEvents(flatEvents),
+      ),
+    [userFlat, currentUser, today, flatEvents],
+  );
+
   if (!userFlat || !currentUser) return null;
 
   let consumed = 0;
@@ -208,6 +303,8 @@ export default function HomeScreen() {
     );
   });
 
+  // Each metric's colour pair: `fg` outlines the card and carries its label
+  // and stat, `soft` tints the icon chip behind it.
   const choreTone: TileTone =
     myChoreStats.total === 0
       ? { fg: colors.textMuted, soft: colors.surfaceAlt }
@@ -237,7 +334,10 @@ export default function HomeScreen() {
   const balanceCaption =
     moneySummary.owe > 0 ? "Time to settle up" : moneySummary.owed > 0 ? "Cha-ching — come collect" : "Squeaky clean";
 
-  const shoppingTone: TileTone = items.length === 0 ? { fg: colors.textMuted, soft: colors.surfaceAlt } : { fg: colors.info, soft: colors.infoSoft };
+  const shoppingTone: TileTone =
+    items.length === 0
+      ? { fg: colors.textMuted, soft: colors.surfaceAlt }
+      : { fg: colors.info, soft: colors.infoSoft };
   const shoppingCaption = items.length === 0 ? "Cart's empty" : `item${items.length === 1 ? "" : "s"} on the list`;
 
   return (
@@ -253,48 +353,54 @@ export default function HomeScreen() {
           <Text style={[styles.cursor, { opacity: nudgeCursorOn ? 1 : 0 }]}>▌</Text>
         </Text>
 
-        <Text style={styles.overviewLabel}>The Lowdown</Text>
-
-        <View style={styles.grid}>
+        <View style={styles.calendarWrap}>
           <RevealTile delay={0}>
-            <StatTile
-              icon={<MaterialCommunityIcons name="broom" size={18} color={choreTone.fg} />}
-              label="Chores"
-              stat={choreStat}
-              caption={choreCaption}
-              tone={choreTone}
-              onPress={() => navigation.navigate("House")}
-              styles={styles}
-              mutedColor={colors.textMuted}
-            />
-          </RevealTile>
-          <RevealTile delay={80}>
-            <StatTile
-              icon={<Ionicons name="cash-outline" size={18} color={balanceTone.fg} />}
-              label="Balance"
-              stat={balanceStat}
-              caption={balanceCaption}
-              tone={balanceTone}
-              onPress={() => navigation.navigate("Splitwise")}
-              styles={styles}
-              mutedColor={colors.textMuted}
+            <CalendarStrip
+              events={calendarEvents}
+              today={today}
+              monthRange={CALENDAR_MONTH_RANGE}
+              onCreateEvent={createEvent}
             />
           </RevealTile>
         </View>
 
-        <RevealTile delay={160}>
-          <StatTile
-            icon={<Ionicons name="cart-outline" size={18} color={shoppingTone.fg} />}
+        {/* Overlapping layers rather than a grid: each card's exposed band
+            carries its own metric, and tapping any layer opens its tab. */}
+        <View style={styles.stack}>
+          <StackCard
+            index={0}
+            icon={(color) => <MaterialCommunityIcons name="broom" size={17} color={color} />}
+            label="Chores"
+            stat={choreStat}
+            caption={choreCaption}
+            tone={choreTone.fg}
+            toneSoft={choreTone.soft}
+            onPress={() => navigation.navigate("House")}
+            styles={styles}
+          />
+          <StackCard
+            index={1}
+            icon={(color) => <Ionicons name="cash-outline" size={17} color={color} />}
+            label="Balance"
+            stat={balanceStat}
+            caption={balanceCaption}
+            tone={balanceTone.fg}
+            toneSoft={balanceTone.soft}
+            onPress={() => navigation.navigate("Splitwise")}
+            styles={styles}
+          />
+          <StackCard
+            index={2}
+            icon={(color) => <Ionicons name="cart-outline" size={17} color={color} />}
             label="Shopping list"
             stat={String(items.length)}
             caption={shoppingCaption}
-            tone={shoppingTone}
-            wide
+            tone={shoppingTone.fg}
+            toneSoft={shoppingTone.soft}
             onPress={() => navigation.navigate("Shopping")}
             styles={styles}
-            mutedColor={colors.textMuted}
           />
-        </RevealTile>
+        </View>
       </ScrollView>
       <SettingsButton />
     </View>
@@ -320,35 +426,40 @@ function createStyles(colors: ThemeColors) {
     color: colors.accent,
     marginTop: 10,
   },
-  overviewLabel: {
-    fontFamily: fonts.display,
-    fontSize: 15,
-    letterSpacing: 1,
-    color: colors.text,
-    marginTop: 36,
-    marginBottom: 10,
-  },
-  grid: { flexDirection: "row", gap: 10 },
-  tile: {
-    flex: 1,
+  // Carries the gap the removed "The Lowdown" heading used to provide, so the
+  // tiles still read as their own section below the calendar.
+  calendarWrap: { marginTop: 28, marginBottom: 26 },
+  // Bottom padding clears the tab bar — the last card is full height, so
+  // without it the stack's base would sit under the tabs.
+  stack: { marginBottom: 40 },
+  stackCard: {
+    height: CARD_HEIGHT,
+    // Opaque on purpose: the layers overlap, so a translucent fill would let
+    // the card underneath bleed through and muddy the stack.
     backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderRadius: 16,
-    padding: 16,
-    gap: 6,
-    marginBottom: 10,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    alignItems: "flex-start",
+    // Lifts each layer off the one it covers so the overlap reads as depth
+    // rather than as one flat shape.
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
+    elevation: 6,
   },
-  tileWide: { flex: undefined },
-  tileTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  tileIcon: {
-    width: 34,
-    height: 34,
+  stackHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  stackIcon: {
+    width: 32,
+    height: 32,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  tileLabel: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1.5, textTransform: "uppercase", marginTop: 4 },
-  tileStat: { fontFamily: fonts.display, fontSize: 26 },
-  tileCaption: { fontFamily: fonts.regular, fontSize: 11, color: colors.textMuted },
+  stackLabel: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase" },
+  stackStat: { fontFamily: fonts.display, fontSize: 26, marginTop: 6 },
+  stackCaption: { fontFamily: fonts.regular, fontSize: 11, color: colors.textMuted, marginTop: 2 },
   });
 }

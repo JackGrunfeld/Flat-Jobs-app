@@ -9,6 +9,41 @@ export type FlatMember = {
   userId: string;
   displayName: string;
   color: string | null;
+  // Set at signup. Feeds the home screen calendar's automatic birthday
+  // events — see utils/calendarEvents.ts.
+  birthday: string | null;
+};
+
+// A row on the flat's communal calendar. Wall-clock date/time rather than an
+// epoch, so an arrangement doesn't drift for a flatmate in another timezone.
+// A null `time` means all-day.
+export type FlatEvent = {
+  id: string;
+  title: string;
+  date: string; // YYYY-MM-DD
+  time: string | null; // HH:MM, 24-hour
+  createdBy: string;
+  createdAt: number;
+};
+
+export type NewFlatEvent = {
+  title: string;
+  date: string;
+  time: string | null;
+};
+
+// A single dated thing the home screen calendar knows about, from either
+// source: `birthday` entries are derived client-side from members' signup
+// birthdates, `event` entries are rows someone added to the communal calendar.
+export type CalendarEventKind = "birthday" | "event";
+
+export type CalendarEvent = {
+  id: string;
+  date: string; // YYYY-MM-DD, local time
+  title: string;
+  kind: CalendarEventKind;
+  color: string | null;
+  time: string | null; // null for all-day (and always null for birthdays)
 };
 
 export type Flat = {
