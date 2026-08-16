@@ -161,8 +161,8 @@ function createStyles(colors: ThemeColors) {
   container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
   pageTitle: {
     fontFamily: fonts.regular,
-    fontSize: typeScale.subheading,
-    letterSpacing: 3,
+    fontSize: 28,
+    letterSpacing: -0.7,
     color: colors.textMuted,
     marginBottom: 16,
   },

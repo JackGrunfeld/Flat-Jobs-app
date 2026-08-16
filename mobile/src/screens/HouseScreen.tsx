@@ -640,12 +640,10 @@ function createStyles(colors: ThemeColors) {
     root: { flex: 1, backgroundColor: colors.bg },
     container: { flex: 1, padding: 16, backgroundColor: colors.bg },
     pageTitle: {
-      fontFamily: fonts.bold,
-      fontSize: typeScale.caption,
-      letterSpacing: 3,
-      textTransform: "uppercase",
-      color: colors.accent,
-      textAlign: "center",
+      fontFamily: fonts.regular,
+      fontSize: 28,
+      letterSpacing: -0.7,
+      color: colors.textMuted,
       marginBottom: 16,
     },
     stats: {

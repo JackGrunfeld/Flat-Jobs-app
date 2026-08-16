@@ -7,7 +7,7 @@ import type {
   NativeSyntheticEvent,
 } from "react-native";
 import { useTheme } from "../context/ThemeContext";
-import { onColor, withAlpha } from "../theme/colors";
+import { onColor, withAlpha, CAL_RED } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { weekdayLabel } from "../utils/calendarEvents";
@@ -187,19 +187,19 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
       // both an on-surface and an on-accent version and dissolves between them.
       const face = (live: boolean) => (
         <>
-          {/* Today prints in the accent rather than the muted grey the rest of
-              the row uses — one of four things marking it, along with the
-              tint, the ring and the scale. */}
+          {/* Today prints in the calendar's red rather than the muted grey the
+              rest of the row uses — one of three things marking it, along with
+              the tint and the scale. */}
           <Text
             style={[
               styles.weekday,
-              { color: live ? withAlpha(ink, 0.75) : isToday ? colors.accentInk : colors.textMuted },
+              { color: live ? withAlpha(ink, 0.75) : isToday ? CAL_RED : colors.textMuted },
             ]}
           >
             {weekdayLabel(item)}
           </Text>
           <View style={styles.numberWrap}>
-            <Text style={[styles.number, { color: live ? ink : isToday ? colors.accentInk : colors.text }]}>
+            <Text style={[styles.number, { color: live ? ink : isToday ? CAL_RED : colors.text }]}>
               {item.getDate()}
             </Text>
           </View>
@@ -361,14 +361,12 @@ function createStyles(colors: ThemeColors) {
       // the face rather than a rounded box of its own.
       overflow: "hidden",
     },
-    // Tinted and ringed as well as enlarged. The ring survives the tile
-    // becoming the middle one, because the highlight fill is clipped to the
-    // content box and so paints inside it rather than over it — meaning today
-    // stays identifiable as today even while it's the selected day.
+    // Tinted and enlarged. The tint survives the tile becoming the middle one,
+    // because the highlight fill is clipped to the content box and so paints
+    // inside it rather than over it — meaning today stays identifiable as
+    // today even while it's the selected day.
     tileToday: {
       backgroundColor: colors.accentSoft,
-      borderWidth: 2,
-      borderColor: colors.accentInk,
       transform: [{ scale: TODAY_SCALE }],
     },
     // Both copies of the face are stacked in the same place, so only their

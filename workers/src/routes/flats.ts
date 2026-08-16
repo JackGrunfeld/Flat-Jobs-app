@@ -10,7 +10,7 @@ import { computeBalances } from "./settlements";
 const flats = new Hono<AppEnv>();
 flats.use("*", requireAuth);
 
-type MemberRow = { user_id: string; display_name: string; color: string | null };
+type MemberRow = { user_id: string; display_name: string; color: string | null; birthday: string | null };
 
 async function loadFlatDto(db: D1Database, flatId: string) {
   const flat = await db.prepare("SELECT * FROM flats WHERE id = ?").bind(flatId).first<{
@@ -24,7 +24,7 @@ async function loadFlatDto(db: D1Database, flatId: string) {
 
   const { results: memberRows } = await db
     .prepare(
-      `SELECT fm.user_id, u.display_name, fm.color
+      `SELECT fm.user_id, u.display_name, fm.color, u.birthday
        FROM flat_members fm JOIN users u ON u.id = fm.user_id
        WHERE fm.flat_id = ?`,
     )
@@ -41,7 +41,12 @@ async function loadFlatDto(db: D1Database, flatId: string) {
     name: flat.name,
     code: flat.code,
     ownerId: flat.owner_id,
-    members: (memberRows ?? []).map((m) => ({ userId: m.user_id, displayName: m.display_name, color: m.color })),
+    members: (memberRows ?? []).map((m) => ({
+      userId: m.user_id,
+      displayName: m.display_name,
+      color: m.color,
+      birthday: m.birthday,
+    })),
     invitedEmails: (inviteRows ?? []).map((r) => r.email),
   };
 }

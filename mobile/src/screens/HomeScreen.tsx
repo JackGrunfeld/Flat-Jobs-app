@@ -573,7 +573,7 @@ function createStyles(colors: ThemeColors) {
   root: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20 },
   greeting: {
-    fontFamily: fonts.bold,
+    fontFamily: fonts.regular,
     color: colors.text,
     fontSize: 28,
     letterSpacing: -0.7,

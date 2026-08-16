@@ -18,7 +18,7 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
-import { withAlpha } from "../theme/colors";
+import { withAlpha, CAL_RED } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import type { CalendarEvent, EventCategory, EventRecurrence, NewFlatEvent, FlatEvent } from "../types";
@@ -181,7 +181,7 @@ const ON_DARK_MUTED = "rgba(255, 255, 255, 0.55)";
 const ON_DARK_PAST = "rgba(255, 255, 255, 0.35)";
 const ON_DARK_LINE = "rgba(255, 255, 255, 0.12)";
 // Today's date, the month, and today's letter in the weekday header.
-const CAL_RED = "#ff5a5f";
+// (CAL_RED is defined in theme/colors.ts alongside CAL_PLATE.)
 // An event whose owner never picked a colour still has to read as "something's
 // on", so it rings in plain white rather than in nothing at all.
 const NEUTRAL_RING = "rgba(255, 255, 255, 0.5)";

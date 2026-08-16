@@ -120,6 +120,10 @@ export const PALETTE = {
 // near-black, blue-cast fill that stays the same across light/dark
 // schemes so the calendar reads as a single panel.
 export const CAL_PLATE = "#1b1f2a";
+// The calendar's accent red — used for today's date, the month letters, and
+// the weekday header's today column. Shared with the chores day strip so
+// "today" reads the same everywhere.
+export const CAL_RED = "#ff5a5f";
 // Repaints the accent in the signed-in member's own colour.
 //
 // A pastel is bright enough to sit *under* dark text but far too pale to *be*

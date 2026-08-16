@@ -12,6 +12,7 @@ import shoppingRoutes from "./routes/shopping";
 import shoppingListItemsRoutes from "./routes/shoppingListItems";
 import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
+import eventsRoutes from "./routes/events";
 
 const app = new Hono<AppEnv>();
 
@@ -20,7 +21,7 @@ app.use(
   cors({
     origin: (origin, c) => c.env.CORS_ORIGIN === "*" ? origin : c.env.CORS_ORIGIN,
     allowHeaders: ["Content-Type", "Authorization"],
-    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
 );
 
@@ -44,5 +45,6 @@ app.route("/flats/:flatId/completions", completionsRoutes);
 app.route("/flats/:flatId/shopping-items", shoppingRoutes);
 app.route("/flats/:flatId/shopping-list-items", shoppingListItemsRoutes);
 app.route("/flats/:flatId/settlements", settlementsRoutes);
+app.route("/flats/:flatId/events", eventsRoutes);
 
 export default app;
