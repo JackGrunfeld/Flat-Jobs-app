@@ -261,6 +261,6 @@ function createStyles(colors: ThemeColors) {
     justifyContent: "center",
   },
   checkboxDone: { backgroundColor: colors.accent, borderColor: colors.accent },
-    checkmark: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
+    checkmark: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
   });
 }

@@ -1,39 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, Animated, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import * as shoppingListService from "../services/shoppingListService";
 import ShoppingItemCard from "../components/ShoppingItemCard";
 import AddShoppingItemModal from "../components/AddShoppingItemModal";
-import AddItemFab, { FAB_SIZE } from "../components/AddItemFab";
 import SettingsButton from "../components/SettingsButton";
+import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import type { FlatMember, ShoppingListItem } from "../types";
 
-const FAB_MARGIN = 16;
-// How long a gap between scroll events has to be before we treat the user
-// as "stopped" and bring the FAB back — see handleScroll below.
-const SCROLL_STOP_DELAY = 150;
-
 // The shared checklist as a stack of cards (avatar of whoever added it, name,
-// tick box) with a floating "+" FAB above the tab bar. The FAB drops out of
-// view while the list is actively scrolling and reappears once scrolling
-// stops or the bottom of the list is reached.
+// tick box). Adding is driven by the tab bar's centre "+", which this screen
+// registers a handler for — there's no FAB of its own any more.
 export default function ShoppingScreen() {
   const insets = useSafeAreaInsets();
+  // The tab bar floats over the page, so the last row needs
+  // somewhere to scroll clear to.
+  const tabBarSpace = useTabBarSpace();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { userFlat, currentUser } = useAuth();
   const [listItems, setListItems] = useState<ShoppingListItem[]>([]);
   const [addVisible, setAddVisible] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
-
-  const fabHidden = useRef(new Animated.Value(0)).current; // 0 = shown, 1 = hidden
-  const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const memberById = useMemo(() => new Map((userFlat?.members ?? []).map((m) => [m.userId, m])), [userFlat]);
 
@@ -79,34 +74,7 @@ export default function ShoppingScreen() {
     return () => clearInterval(blink);
   }, []);
 
-  const showFab = useCallback(() => {
-    if (stopTimer.current) {
-      clearTimeout(stopTimer.current);
-      stopTimer.current = null;
-    }
-    Animated.spring(fabHidden, { toValue: 0, useNativeDriver: true, friction: 8, tension: 60 }).start();
-  }, [fabHidden]);
-
-  const hideFab = useCallback(() => {
-    Animated.timing(fabHidden, { toValue: 1, duration: 180, useNativeDriver: true }).start();
-  }, [fabHidden]);
-
-  const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-      const reachedBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 24;
-
-      if (reachedBottom) {
-        showFab();
-        return;
-      }
-
-      hideFab();
-      if (stopTimer.current) clearTimeout(stopTimer.current);
-      stopTimer.current = setTimeout(showFab, SCROLL_STOP_DELAY);
-    },
-    [hideFab, showFab],
-  );
+  useRegisterAddAction("Shopping", () => setAddVisible(true));
 
   if (!userFlat) return null;
 
@@ -148,21 +116,11 @@ export default function ShoppingScreen() {
     await shoppingListService.deleteShoppingListItem(userFlat.id, itemId);
   };
 
-  // This screen's own container already stops right above the tab bar (the
-  // tab bar isn't drawn `position: absolute` over it), so "bottom: 0" here
-  // is already just above the tabs — no tab bar height to add in.
-  const fabBottom = FAB_MARGIN;
-  // Distance needed to carry the FAB from its resting spot down past the
-  // bottom of the screen (and behind the tab bar) when hidden.
-  const fabTranslateY = fabHidden.interpolate({ inputRange: [0, 1], outputRange: [0, fabBottom + FAB_SIZE + 20] });
-
   return (
     <View style={styles.root}>
-      <Animated.ScrollView
+      <ScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: fabBottom + FAB_SIZE + 24 }}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: tabBarSpace }}
       >
         <Text style={styles.pageTitle}>Shopping List</Text>
 
@@ -189,9 +147,8 @@ export default function ShoppingScreen() {
             onSwipeClose={() => setOpenItemId((prev) => (prev === item.id ? null : prev))}
           />
         ))}
-      </Animated.ScrollView>
+      </ScrollView>
 
-      <AddItemFab bottom={fabBottom} translateY={fabTranslateY} onPress={() => setAddVisible(true)} />
       <AddShoppingItemModal visible={addVisible} onClose={() => setAddVisible(false)} onAdd={addListItem} />
       <SettingsButton />
     </View>

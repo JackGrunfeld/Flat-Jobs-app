@@ -84,6 +84,6 @@ function createStyles(colors: ThemeColors) {
     cancelButton: { paddingVertical: 10, paddingHorizontal: 16 },
     cancelText: { fontFamily: fonts.bold, color: colors.textMuted },
     confirmButton: { backgroundColor: colors.accent, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 16 },
-    confirmText: { fontFamily: fonts.bold, color: "#fff" },
+    confirmText: { fontFamily: fonts.bold, color: colors.accentText },
   });
 }

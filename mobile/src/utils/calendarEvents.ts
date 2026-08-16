@@ -3,7 +3,7 @@
 // member's signup birthdate rather than stored as rows, so they recur every
 // year for free and need no backend of their own.
 
-import type { CalendarEvent, FlatEvent, FlatMember, User } from "../types";
+import type { CalendarEvent, EventRecurrence, FlatEvent, FlatMember, User } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -11,6 +11,15 @@ const pad = (n: number) => String(n).padStart(2, "0");
 // converts to UTC first, which lands on the wrong day either side of midnight.
 export function toISODate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Parses a stored YYYY-MM-DD as a LOCAL midnight. Deliberately not `new
+// Date(iso)`, which reads a bare date as UTC and lands on the previous day for
+// anyone behind it.
+export function fromISODate(iso: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 }
 
 export function startOfToday(): Date {
@@ -133,6 +142,15 @@ export function buildBirthdayEventsInRange(
         kind: "birthday",
         color: person.color,
         time: null,
+        // A birthday is its own kind of thing rather than one of the flat's
+        // billing categories, and it never spans or is anything but its own
+        // first day.
+        // A birthday recurs yearly by its nature, but saying so in the banner
+        // would be telling someone that birthdays happen every year.
+        category: null,
+        recurrence: null,
+        isStart: true,
+        spanDays: 1,
       });
     }
   }
@@ -156,26 +174,109 @@ export function groupEventsByDate(events: CalendarEvent[]): Map<string, Calendar
 const byDateThenTime = (a: CalendarEvent, b: CalendarEvent) =>
   a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? "");
 
-export function toCalendarEvents(events: FlatEvent[]): CalendarEvent[] {
-  return events.map((event) => ({
-    id: `event:${event.id}`,
-    date: event.date,
-    title: event.title,
-    kind: "event" as const,
-    // Communal events have no owner colour — the strip falls back to its
-    // default ring so they still read as "something's on".
-    color: null,
-    time: event.time,
-  }));
+// One step of a recurrence rule. Monthly and yearly go through the calendar
+// rather than through arithmetic on days, so "the 1st of every month" stays on
+// the 1st instead of drifting, and a 31st clamps to the length of a short month
+// the way addMonths already handles.
+function stepOccurrence(start: Date, recurrence: EventRecurrence, n: number): Date {
+  switch (recurrence) {
+    case "weekly":
+      return addDays(start, n * 7);
+    case "fortnightly":
+      return addDays(start, n * 14);
+    case "monthly":
+      return addMonths(start, n);
+    case "yearly":
+      return addMonths(start, n * 12);
+  }
+}
+
+// A repeat is stored as a rule with no end, so expansion is bounded by the
+// window asked for rather than by the data. This is the belt-and-braces cap in
+// case a window and a cadence ever combine into something absurd — a year of
+// weekly events is 53, so anything approaching this is a bug rather than a
+// calendar.
+const MAX_OCCURRENCES = 2000;
+
+// Turns stored events — which are rules, possibly spanning days and possibly
+// repeating — into one entry per day they actually cover inside [from, to].
+//
+// Every day of a span gets its own entry so the grid can mark all of them
+// without having to know about spans at all; `isStart` is what distinguishes
+// the day the thing begins, which is the one the banner announces and the one
+// "next up" counts. An event is tinted by whoever put it on the calendar, in
+// the colour that flatmate picked for their account — unless it has a category,
+// in which case what it *is* matters more than who added it, and the strip
+// colours it accordingly.
+export function toCalendarEvents(
+  events: FlatEvent[],
+  members: FlatMember[],
+  from: Date,
+  to: Date,
+): CalendarEvent[] {
+  const colorByUser = new Map(members.map((member) => [member.userId, member.color]));
+  const out: CalendarEvent[] = [];
+
+  for (const event of events) {
+    const start = fromISODate(event.date);
+    if (!start) continue;
+    const end = event.endDate ? (fromISODate(event.endDate) ?? start) : start;
+    // Inclusive, so a single-day event is 1 and a Fri–Sun event is 3.
+    const spanDays = Math.max(1, daysBetween(start, end) + 1);
+    const color = colorByUser.get(event.createdBy) ?? null;
+
+    const emitOccurrence = (occurrenceStart: Date, index: number) => {
+      for (let day = 0; day < spanDays; day++) {
+        const date = addDays(occurrenceStart, day);
+        if (date.getTime() < from.getTime() || date.getTime() > to.getTime()) continue;
+        out.push({
+          // Unique per day and per occurrence — two entries of the same event
+          // are on screen at once whenever it spans or repeats.
+          id: `event:${event.id}:${index}:${day}`,
+          date: toISODate(date),
+          title: event.title,
+          kind: "event",
+          color,
+          time: event.time,
+          category: event.category,
+          recurrence: event.recurrence,
+          isStart: day === 0,
+          spanDays,
+        });
+      }
+    };
+
+    if (!event.recurrence) {
+      emitOccurrence(start, 0);
+      continue;
+    }
+
+    // Walk forward from the first occurrence. A span means an occurrence can
+    // still be running inside the window after starting before it, so stepping
+    // stops once even the *end* of an occurrence has passed `to`.
+    for (let index = 0; index < MAX_OCCURRENCES; index++) {
+      const occurrenceStart = stepOccurrence(start, event.recurrence, index);
+      if (occurrenceStart.getTime() > to.getTime()) break;
+      if (addDays(occurrenceStart, spanDays - 1).getTime() >= from.getTime()) {
+        emitOccurrence(occurrenceStart, index);
+      }
+    }
+  }
+
+  return out;
 }
 
 export function mergeCalendarEvents(...lists: CalendarEvent[][]): CalendarEvent[] {
   return lists.flat().sort(byDateThenTime);
 }
 
+// Only the first day of an occurrence counts as "next up": the middle of a
+// four-day event isn't a thing that's about to happen, it's a thing already
+// under way, and announcing it as upcoming on each of its days would bury
+// whatever genuinely comes next.
 export function nextEvent(events: CalendarEvent[], from: Date): CalendarEvent | null {
   const todayISO = toISODate(from);
-  return events.filter((e) => e.date >= todayISO).sort(byDateThenTime)[0] ?? null;
+  return events.filter((e) => e.isStart && e.date >= todayISO).sort(byDateThenTime)[0] ?? null;
 }
 
 // "19:30" -> "7:30 pm". Hand-rolled rather than via toLocaleTimeString because
@@ -216,3 +317,11 @@ export const monthLabel = (date: Date) =>
 
 export const weekdayLabel = (date: Date) =>
   date.toLocaleDateString(undefined, { weekday: "short" }).toUpperCase();
+
+// Single-letter weekday headings, Sunday first — 2023-01-01 was a Sunday, so
+// the seven days from it are one week in order. Taken from the locale rather
+// than hard-coded so the header isn't stuck in English, and indexed to match
+// `Date.getDay()`.
+export const WEEKDAY_INITIALS = Array.from({ length: 7 }, (_, i) =>
+  new Date(2023, 0, 1 + i).toLocaleDateString(undefined, { weekday: "narrow" }).toUpperCase(),
+);

@@ -113,13 +113,13 @@ export default function FlatSetupScreen() {
           <TextInput
             style={styles.input}
             placeholder="e.g. 12 Main St"
-            placeholderTextColor="#c9cdd4"
+            placeholderTextColor={colors.textMuted}
             value={flatName}
             onChangeText={setFlatName}
           />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable style={styles.primaryButton} onPress={handleCreate} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Create</Text>}
+            {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.primaryButtonText}>Create</Text>}
           </Pressable>
           <Pressable onPress={() => setView("choice")}>
             <Text style={styles.backText}>Back</Text>
@@ -146,14 +146,14 @@ export default function FlatSetupScreen() {
           <TextInput
             style={[styles.input, styles.codeInput]}
             placeholder="ABC123"
-            placeholderTextColor="#c9cdd4"
+            placeholderTextColor={colors.textMuted}
             autoCapitalize="characters"
             value={joinCode}
             onChangeText={setJoinCode}
           />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable style={styles.primaryButton} onPress={handleJoin} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Join</Text>}
+            {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.primaryButtonText}>Join</Text>}
           </Pressable>
           <Pressable onPress={() => setView("choice")}>
             <Text style={styles.backText}>Back</Text>
@@ -168,18 +168,18 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bg },
   title: { fontFamily: fonts.bold, fontSize: typeScale.subheading, textAlign: "center", color: colors.text, marginBottom: 12 },
-  titleCursor: { color: colors.accent },
+  titleCursor: { color: colors.accentInk },
   subtitle: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted, textAlign: "center", marginBottom: 12 },
   input: { fontFamily: fonts.regular, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, padding: 12, fontSize: typeScale.body, color: colors.text },
   codeInput: { fontFamily: fonts.bold, textAlign: "center", letterSpacing: 4, fontSize: typeScale.body },
   error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
   primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
-  primaryButtonText: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
-  secondaryButton: { borderWidth: 1, borderColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
-  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accent, fontSize: typeScale.body },
+  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
+  secondaryButton: { borderWidth: 1, borderColor: colors.accentInk, borderRadius: 8, padding: 14, alignItems: "center" },
+  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
   backText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 8 },
   logoutText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 24 },
   codeBox: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, alignItems: "center", marginBottom: 8 },
-  code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: colors.accent },
+  code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: colors.accentInk },
   });
 }

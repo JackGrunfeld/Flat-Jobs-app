@@ -1,12 +1,15 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import * as shoppingService from "../services/shoppingService";
 import * as settlementsService from "../services/settlementsService";
 import SettleUpModal from "../components/SettleUpModal";
+import AddExpenseModal, { type NewExpense } from "../components/AddExpenseModal";
 import SettingsButton from "../components/SettingsButton";
+import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
@@ -14,7 +17,6 @@ import { typeScale } from "../theme/typography";
 import type { ShoppingCategory, ShoppingItem, Balance, Settlement } from "../types";
 
 const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-const CATEGORIES: ShoppingCategory[] = ["Food", "Utilities", "Household", "Other"];
 
 // Split out of the old combined Shopping screen (see chat: "$ sign icon
 // with the splitwise feature on that tab") — shared expense ledger + who-
@@ -22,6 +24,9 @@ const CATEGORIES: ShoppingCategory[] = ["Food", "Utilities", "Household", "Other
 // plain shopping list.
 export default function SplitwiseScreen() {
   const insets = useSafeAreaInsets();
+  // The tab bar floats over the page, so the last row needs
+  // somewhere to scroll clear to.
+  const tabBarSpace = useTabBarSpace();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat } = useAuth();
@@ -29,11 +34,8 @@ export default function SplitwiseScreen() {
   const [expenses, setExpenses] = useState<ShoppingItem[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [expenseName, setExpenseName] = useState("");
-  const [expenseCost, setExpenseCost] = useState("");
-  const [expenseCategory, setExpenseCategory] = useState<ShoppingCategory>("Food");
-  const [splitWith, setSplitWith] = useState<string[]>([]);
   const [settleTarget, setSettleTarget] = useState<Balance | null>(null);
+  const [addVisible, setAddVisible] = useState(false);
 
   const load = useCallback(async () => {
     if (!userFlat) return;
@@ -50,30 +52,17 @@ export default function SplitwiseScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
-      setSplitWith(currentUser ? [currentUser.id] : []);
-    }, [load, currentUser]),
+    }, [load]),
   );
+
+  useRegisterAddAction("Splitwise", () => setAddVisible(true));
 
   if (!userFlat || !currentUser) return null;
 
   const nameFor = (userId: string) => userFlat.members.find((m) => m.userId === userId)?.displayName ?? "Unknown";
 
-  const toggleSplit = (userId: string) => {
-    setSplitWith((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
-  };
-
-  const addExpense = async () => {
-    const costCents = Math.round(parseFloat(expenseCost || "0") * 100);
-    if (!expenseName.trim() || !Number.isFinite(costCents) || costCents <= 0) return;
-    await shoppingService.addShoppingItem(userFlat.id, {
-      name: expenseName.trim(),
-      costCents,
-      splitWith,
-      category: expenseCategory,
-    });
-    setExpenseName("");
-    setExpenseCost("");
-    setExpenseCategory("Food");
+  const addExpense = async (expense: NewExpense) => {
+    await shoppingService.addShoppingItem(userFlat.id, expense);
     await load();
   };
 
@@ -93,7 +82,10 @@ export default function SplitwiseScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView style={[styles.container, { paddingTop: insets.top + 16 }]}>
+      <ScrollView
+        style={[styles.container, { paddingTop: insets.top + 16 }]}
+        contentContainerStyle={{ paddingBottom: tabBarSpace }}
+      >
         <Text style={styles.pageTitle}>Splitwise</Text>
 
         <Text style={styles.sectionTitle}>Balances</Text>
@@ -137,52 +129,6 @@ export default function SplitwiseScreen() {
           </View>
         ))}
 
-        <Text style={styles.sectionTitle}>Log an expense</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="What was it?"
-          placeholderTextColor={colors.textMuted}
-          value={expenseName}
-          onChangeText={setExpenseName}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Cost"
-          placeholderTextColor={colors.textMuted}
-          keyboardType="decimal-pad"
-          value={expenseCost}
-          onChangeText={setExpenseCost}
-        />
-        <Text style={styles.subLabel}>Category:</Text>
-        <View style={styles.row}>
-          {CATEGORIES.map((cat) => (
-            <Pressable
-              key={cat}
-              style={[styles.chip, expenseCategory === cat && styles.chipActive]}
-              onPress={() => setExpenseCategory(cat)}
-            >
-              <Text style={[styles.chipText, expenseCategory === cat && styles.chipTextActive]}>{cat}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={styles.subLabel}>Split with:</Text>
-        <View style={styles.row}>
-          {userFlat.members.map((m) => (
-            <Pressable
-              key={m.userId}
-              style={[styles.chip, splitWith.includes(m.userId) && styles.chipActive]}
-              onPress={() => toggleSplit(m.userId)}
-            >
-              <Text style={[styles.chipText, splitWith.includes(m.userId) && styles.chipTextActive]}>
-                {m.displayName}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Pressable style={styles.primaryButton} onPress={addExpense}>
-          <Text style={styles.primaryButtonText}>Log expense</Text>
-        </Pressable>
-
         {settlements.length > 0 && (
           <>
             <Text style={styles.sectionTitle}>Settlement history</Text>
@@ -194,6 +140,14 @@ export default function SplitwiseScreen() {
             ))}
           </>
         )}
+
+        <AddExpenseModal
+          visible={addVisible}
+          members={userFlat.members}
+          currentUserId={currentUser.id}
+          onClose={() => setAddVisible(false)}
+          onSubmit={addExpense}
+        />
 
         <SettleUpModal
           visible={!!settleTarget}
@@ -229,7 +183,7 @@ function createStyles(colors: ThemeColors) {
   balanceText: { fontFamily: fonts.regular, fontSize: typeScale.body, flex: 1, color: colors.text },
   balanceAmount: { fontFamily: fonts.bold, color: colors.text },
   settleButton: { backgroundColor: colors.accent, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
-  settleButtonText: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
+  settleButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
   itemRow: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, borderRadius: 10, padding: 12, marginBottom: 8 },
   itemNameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   itemName: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.text },
@@ -248,9 +202,9 @@ function createStyles(colors: ThemeColors) {
   chip: { borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 16, paddingVertical: 6, paddingHorizontal: 12 },
   chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   chipText: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.text },
-  chipTextActive: { color: "#fff" },
+  chipTextActive: { color: colors.accentText },
   primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 16 },
-  primaryButtonText: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
+  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
   historyRow: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted, paddingVertical: 4 },
   });
 }

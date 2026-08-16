@@ -1,11 +1,10 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Switch, ScrollView, Alert } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Switch, ScrollView, Alert, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import * as flatService from "../services/flatService";
-import * as choresService from "../services/choresService";
 import { ApiError } from "../services/apiClient";
 import { requestCompletionAlertPermission } from "../notifications/completionAlerts";
 import { getCompletionAlertsEnabled, setCompletionAlertsEnabled } from "../storage/preferences";
@@ -14,12 +13,10 @@ import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import { initialsFor } from "../utils/initials";
-import type { Chore, Frequency } from "../types";
+import { MEMBER_PRESETS } from "../theme/pastels";
+import PastelColorWheel from "../components/PastelColorWheel";
 
-const COLORS = ["#EF4444", "#F97316", "#EAB308", "#22C55E", "#0EA5E9", "#6366F1", "#A855F7", "#EC4899"];
-const FREQUENCIES: Frequency[] = ["Daily", "Weekly", "Monthly"];
-
-type MenuKey = "account" | "flatmates" | "invite" | "chores";
+type MenuKey = "account" | "flatmates" | "invite";
 
 function MenuHeader({
   title,
@@ -41,8 +38,8 @@ function MenuHeader({
 }
 
 // Account/colour/notifications/sign-out, plus the flat config menus (Flat,
-// Flatmates, Invite Flatmates, Chore List) that used to live on the House
-// tab — House now only shows the weekly chore-assignment cards.
+// Flatmates, Invite Flatmates). Chore management used to live here too; it
+// now sits on the Chores tab behind the tab bar's "+".
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -51,41 +48,31 @@ export default function SettingsScreen() {
   const { currentUser, userFlat, logout, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
-  const choreFormEndRef = useRef<View>(null);
   const scrollYRef = useRef(0);
 
-  const [chores, setChores] = useState<Chore[]>([]);
   const [displayNameInput, setDisplayNameInput] = useState(currentUser?.displayName ?? "");
   const [flatName, setFlatName] = useState(userFlat?.name ?? "");
   const [inviteEmail, setInviteEmail] = useState("");
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
-  const [expandedChoreId, setExpandedChoreId] = useState<string | null>(null);
-  const [showChoreForm, setShowChoreForm] = useState(false);
-
-  const [editingChoreId, setEditingChoreId] = useState<string | null>(null);
-  const [newChoreName, setNewChoreName] = useState("");
-  const [newChoreDescription, setNewChoreDescription] = useState("");
-  const [newChoreFrequency, setNewChoreFrequency] = useState<Frequency>("Weekly");
-  const [newChoreMembers, setNewChoreMembers] = useState<string[]>([]);
-
-  const loadChores = useCallback(async () => {
-    if (!userFlat) return;
-    const { chores } = await choresService.fetchChores(userFlat.id);
-    setChores(chores);
-  }, [userFlat]);
+  const [showColorWheel, setShowColorWheel] = useState(false);
+  const { width: windowWidth } = useWindowDimensions();
+  // The screen pads 16 a side and the menu body another 2 — the rest is the
+  // wheel's, capped so it doesn't balloon on tablets.
+  const wheelSize = Math.min(windowWidth - 36, 320);
 
   useFocusEffect(
     useCallback(() => {
       getCompletionAlertsEnabled().then(setAlertsEnabled);
-      loadChores();
       setFlatName(userFlat?.name ?? "");
       setDisplayNameInput(currentUser?.displayName ?? "");
-    }, [loadChores, userFlat?.name, currentUser?.displayName]),
+    }, [userFlat?.name, currentUser?.displayName]),
   );
 
   if (!currentUser || !userFlat) return null;
 
   const myColor = userFlat.members.find((m) => m.userId === currentUser.id)?.color ?? null;
+  // Colours stored before the pastel switch may be any casing, so match loosely.
+  const isMyColor = (color: string) => myColor?.toLowerCase() === color.toLowerCase();
 
   const pickColor = async (color: string) => {
     await flatService.updateMemberColor(userFlat.id, color);
@@ -140,79 +127,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const toggleNewChoreMember = (userId: string) => {
-    setNewChoreMembers((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
-  };
-
-  const resetChoreForm = () => {
-    setEditingChoreId(null);
-    setNewChoreName("");
-    setNewChoreDescription("");
-    setNewChoreFrequency("Weekly");
-    setNewChoreMembers([]);
-    setShowChoreForm(false);
-  };
-
-  const scrollToChoreFormEnd = () => {
-    setTimeout(() => {
-      const scrollView = scrollRef.current;
-      const marker = choreFormEndRef.current;
-      if (!scrollView || !marker) return;
-      (scrollView as unknown as View).measure((_sx, _sy, _sw, scrollHeight, _spx, scrollPageY) => {
-        marker.measureInWindow((_mpx, markerPageY, _mw, markerHeight) => {
-          const overflow = markerPageY + markerHeight - (scrollPageY + scrollHeight);
-          if (overflow > 0) {
-            scrollView.scrollTo({ y: scrollYRef.current + overflow + 16, animated: true });
-          }
-        });
-      });
-    }, 150);
-  };
-
-  const openChoreForm = () => {
-    setShowChoreForm(true);
-    scrollToChoreFormEnd();
-  };
-
-  const startEditChore = (chore: Chore) => {
-    setEditingChoreId(chore.id);
-    setNewChoreName(chore.name);
-    setNewChoreDescription(chore.description ?? "");
-    setNewChoreFrequency(chore.frequency);
-    setNewChoreMembers(chore.memberIds);
-    setShowChoreForm(true);
-    scrollToChoreFormEnd();
-  };
-
-  const submitChoreForm = async () => {
-    if (!newChoreName.trim()) return;
-    const payload = {
-      name: newChoreName.trim(),
-      description: newChoreDescription.trim(),
-      frequency: newChoreFrequency,
-      memberIds: newChoreMembers,
-    };
-    if (editingChoreId) {
-      await choresService.updateChore(userFlat.id, editingChoreId, payload);
-    } else {
-      await choresService.addChore(userFlat.id, payload);
-    }
-    resetChoreForm();
-    await loadChores();
-  };
-
-  const deleteChore = async (choreId: string) => {
-    await choresService.deleteChore(userFlat.id, choreId);
-    if (editingChoreId === choreId) resetChoreForm();
-    if (expandedChoreId === choreId) setExpandedChoreId(null);
-    await loadChores();
-  };
-
-  const choresByFrequency = FREQUENCIES.map((freq) => ({
-    freq,
-    items: chores.filter((c) => c.frequency === freq),
-  })).filter((g) => g.items.length > 0);
-
   return (
     <ScrollView
       ref={scrollRef}
@@ -249,14 +163,40 @@ export default function SettingsScreen() {
 
           <Text style={styles.formFieldLabel}>Your colour</Text>
           <View style={styles.colorRow}>
-            {COLORS.map((color) => (
+            {MEMBER_PRESETS.map((color) => (
               <Pressable
                 key={color}
-                style={[styles.colorSwatch, { backgroundColor: color }, myColor === color && styles.colorSwatchActive]}
+                style={[styles.colorSwatch, { backgroundColor: color }, isMyColor(color) && styles.colorSwatchActive]}
                 onPress={() => pickColor(color)}
               />
             ))}
+            {/* A colour picked off the wheel isn't in the row above, so show it
+                on the end — otherwise the current choice vanishes once the
+                wheel is collapsed. */}
+            {myColor && !MEMBER_PRESETS.some(isMyColor) && (
+              <View style={[styles.colorSwatch, styles.colorSwatchActive, { backgroundColor: myColor }]} />
+            )}
+            <Pressable
+              style={[styles.colorSwatch, styles.colorWheelToggle]}
+              onPress={() => setShowColorWheel((prev) => !prev)}
+            >
+              <Ionicons
+                name={showColorWheel ? "close" : "color-palette-outline"}
+                size={18}
+                color={colors.textMuted}
+              />
+            </Pressable>
           </View>
+          {showColorWheel && (
+            <View style={styles.colorWheelWrap}>
+              <PastelColorWheel
+                size={wheelSize}
+                value={myColor}
+                onSelect={pickColor}
+                selectedBorderColor={colors.text}
+              />
+            </View>
+          )}
 
           <Text style={styles.formFieldLabel}>Appearance</Text>
           <View style={styles.schemeSelector}>
@@ -346,155 +286,15 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      <MenuHeader title="Chore List" open={openMenu === "chores"} onPress={() => toggleMenu("chores")} styles={styles} />
-      {openMenu === "chores" && (
-        <View style={styles.menuBody}>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Completion alerts</Text>
-            <Switch
-              value={alertsEnabled}
-              onValueChange={onToggleAlerts}
-              trackColor={{ false: colors.border, true: colors.accent }}
-              thumbColor="#fff"
-            />
-          </View>
-
-          {!showChoreForm && (
-            <Pressable style={styles.addChoreButton} onPress={openChoreForm}>
-              <Text style={styles.addChoreButtonText}>+ Add New Chore</Text>
-            </Pressable>
-          )}
-
-          {showChoreForm && (
-          <View style={styles.formCard}>
-            <Text style={styles.formFieldLabel}>{editingChoreId ? "Edit chore" : "Chore name"}</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={styles.inputText}
-                placeholder="e.g. Vacuum living room"
-                placeholderTextColor={colors.textMuted}
-                value={newChoreName}
-                onChangeText={setNewChoreName}
-              />
-            </View>
-
-            <Text style={styles.formFieldLabel}>Frequency</Text>
-            <View style={styles.freqSelector}>
-              {FREQUENCIES.map((freq) => (
-                <Pressable
-                  key={freq}
-                  style={[styles.freqBtn, newChoreFrequency === freq && styles.freqBtnActive]}
-                  onPress={() => setNewChoreFrequency(freq)}
-                >
-                  <Text style={[styles.freqBtnText, newChoreFrequency === freq && styles.freqBtnTextActive]}>
-                    {freq}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.formFieldLabel}>Rotation members</Text>
-            <View style={styles.choreFormChips}>
-              {userFlat.members.map((m) => {
-                const active = newChoreMembers.includes(m.userId);
-                return (
-                  <Pressable
-                    key={m.userId}
-                    style={[styles.choreFormChip, active && { backgroundColor: m.color ?? colors.accent, borderColor: "transparent" }]}
-                    onPress={() => toggleNewChoreMember(m.userId)}
-                  >
-                    <Text style={[styles.choreFormChipText, active && styles.choreFormChipTextActive]}>
-                      {m.displayName}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-              <Pressable
-                style={[styles.choreFormChip, newChoreMembers.length === 0 && styles.choreFormChipAllActive]}
-                onPress={() => setNewChoreMembers([])}
-              >
-                <Text style={styles.choreFormChipText}>All</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.formFieldLabel}>Description</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                style={[styles.inputText, styles.descriptionInput]}
-                placeholder="What needs to be done? (optional)"
-                placeholderTextColor={colors.textMuted}
-                value={newChoreDescription}
-                onChangeText={setNewChoreDescription}
-                multiline
-              />
-            </View>
-
-            <Pressable style={styles.primaryButton} onPress={submitChoreForm}>
-              <Text style={styles.primaryButtonText}>{editingChoreId ? "Save changes" : "Add chore"}</Text>
-            </Pressable>
-            <Pressable style={styles.ghostButton} onPress={resetChoreForm}>
-              <Text style={styles.ghostButtonText}>Cancel</Text>
-            </Pressable>
-            <View ref={choreFormEndRef} />
-          </View>
-          )}
-
-          {choresByFrequency.length === 0 && <Text style={styles.emptyChores}>No chores yet.</Text>}
-          {choresByFrequency.map(({ freq, items }) => (
-            <View key={freq}>
-              <Text style={styles.groupLabel}>{freq}</Text>
-              {items.map((chore) => {
-                const expanded = expandedChoreId === chore.id;
-                const choreMembers = userFlat.members.filter((m) => chore.memberIds.includes(m.userId));
-                return (
-                  <View key={chore.id} style={styles.choreCard}>
-                    <Pressable
-                      style={styles.choreCardHeader}
-                      onPress={() => setExpandedChoreId(expanded ? null : chore.id)}
-                    >
-                      <View style={styles.flex1}>
-                        <Text style={styles.choreName}>{chore.name}</Text>
-                        <View style={styles.choreFreqBadge}>
-                          <Text style={styles.choreFreqBadgeText}>{chore.frequency}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.choreActions}>
-                        <Pressable style={styles.iconButton} onPress={() => startEditChore(chore)} hitSlop={8}>
-                          <Ionicons name="pencil" size={13} color={colors.textMuted} />
-                        </Pressable>
-                        <Pressable style={styles.iconButton} onPress={() => deleteChore(chore.id)} hitSlop={8}>
-                          <Ionicons name="trash-outline" size={13} color={colors.danger} />
-                        </Pressable>
-                        <Text style={styles.chevron}>{expanded ? "−" : "+"}</Text>
-                      </View>
-                    </Pressable>
-                    {expanded && (
-                      <View style={styles.choreCardBody}>
-                        {chore.description?.trim() ? (
-                          <Text style={styles.choreDescription}>{chore.description}</Text>
-                        ) : (
-                          <Text style={styles.choreDescEmpty}>No description.</Text>
-                        )}
-                        {choreMembers.length > 0 ? (
-                          <View style={styles.choreMemberRow}>
-                            {choreMembers.map((m) => (
-                              <View key={m.userId} style={[styles.choreMemberChip, { backgroundColor: m.color ?? colors.accent }]}>
-                                <Text style={styles.choreMemberChipText}>{m.displayName}</Text>
-                              </View>
-                            ))}
-                          </View>
-                        ) : (
-                          <Text style={styles.choreDescEmpty}>All flatmates.</Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          ))}
-        </View>
-      )}
+      <View style={styles.settingRow}>
+        <Text style={styles.settingLabel}>Completion alerts</Text>
+        <Switch
+          value={alertsEnabled}
+          onValueChange={onToggleAlerts}
+          trackColor={{ false: colors.border, true: colors.accent }}
+          thumbColor="#fff"
+        />
+      </View>
 
       <Pressable style={styles.dangerButton} onPress={confirmLeaveFlat}>
         <Text style={styles.dangerButtonText}>Leave flat</Text>
@@ -523,6 +323,14 @@ function createStyles(colors: ThemeColors) {
   colorRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   colorSwatch: { width: 36, height: 36, borderRadius: 18 },
   colorSwatchActive: { borderWidth: 3, borderColor: colors.text },
+  colorWheelToggle: {
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorWheelWrap: { alignSelf: "center", marginTop: 14 },
   settingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
   settingLabel: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.text },
   dangerButton: { borderWidth: 1, borderColor: colors.danger, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 32 },
@@ -552,9 +360,7 @@ function createStyles(colors: ThemeColors) {
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  inputText: { fontFamily: fonts.bold, color: colors.text, fontSize: typeScale.body, paddingVertical: 8 },
-  descriptionInput: { minHeight: 60, textAlignVertical: "top" },
-  smallButton: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  inputText: { fontFamily: fonts.bold, color: colors.text, fontSize: typeScale.body, paddingVertical: 8 },  smallButton: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16 },
   smallButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.caption, letterSpacing: 1, textTransform: "uppercase" },
   codeRow: {
     flexDirection: "row",
@@ -579,62 +385,7 @@ function createStyles(colors: ThemeColors) {
     justifyContent: "center",
   },
   memberAvatarText: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: "rgba(0,0,0,0.75)" },
-  memberName: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 0.3, textTransform: "uppercase", color: "rgba(0,0,0,0.75)" },
-  groupLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, letterSpacing: 1.5, color: colors.textMuted, textTransform: "uppercase", marginTop: 12, marginBottom: 4 },
-  addChoreButton: {
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  addChoreButtonText: {
-    fontFamily: fonts.bold,
-    color: colors.accentText,
-    fontSize: typeScale.caption,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  emptyChores: {
-    fontFamily: fonts.bold,
-    fontSize: typeScale.caption,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    color: colors.textMuted,
-    textAlign: "center",
-    paddingVertical: 12,
-  },
-  choreCard: { backgroundColor: colors.surface, borderRadius: 12, marginBottom: 8, overflow: "hidden" },
-  choreCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 14 },
-  choreActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  choreName: { fontFamily: fonts.bold, fontSize: typeScale.body, textTransform: "uppercase", letterSpacing: 0.3, color: colors.text, marginBottom: 4 },
-  choreFreqBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.accentSoft,
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-  choreFreqBadgeText: { fontFamily: fonts.bold, fontSize: typeScale.caption, letterSpacing: 1, textTransform: "uppercase", color: colors.accent },
-  iconButton: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chevron: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.textMuted, width: 14, textAlign: "center" },
-  choreCardBody: { paddingHorizontal: 14, paddingBottom: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 },
-  choreDescription: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.textMuted, lineHeight: 18 },
-  choreDescEmpty: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1, color: colors.textMuted },
-  choreMemberRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  choreMemberChip: { borderRadius: 6, paddingVertical: 4, paddingHorizontal: 8 },
-  choreMemberChipText: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 0.3, color: "rgba(0,0,0,0.75)" },
-  formCard: { backgroundColor: colors.surface, borderRadius: 12, padding: 14, marginTop: 4, gap: 4 },
-  formFieldLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 10, marginBottom: 6 },
+  memberName: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 0.3, textTransform: "uppercase", color: "rgba(0,0,0,0.75)" },  formFieldLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 10, marginBottom: 6 },
   schemeSelector: { flexDirection: "row", gap: 6 },
   schemeBtn: {
     flex: 1,
@@ -656,35 +407,5 @@ function createStyles(colors: ThemeColors) {
     letterSpacing: 0.5,
     color: colors.textMuted,
   },
-  schemeBtnTextActive: { color: colors.accentText },
-  freqSelector: { flexDirection: "row", gap: 6 },
-  freqBtn: {
-    flex: 1,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  freqBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  freqBtnText: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textMuted },
-  freqBtnTextActive: { color: colors.accentText },
-  choreFormChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  choreFormChip: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  choreFormChipText: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 0.5, color: colors.textMuted },
-  choreFormChipTextActive: { color: "rgba(0,0,0,0.75)" },
-  choreFormChipAllActive: { backgroundColor: colors.border, borderColor: colors.inputBorder },
-  primaryButton: { backgroundColor: colors.accent, borderRadius: 12, padding: 12, alignItems: "center", marginTop: 12 },
-  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1 },
-  ghostButton: { backgroundColor: colors.surfaceAlt, borderWidth: 1.5, borderColor: colors.border, borderRadius: 12, padding: 12, alignItems: "center", marginTop: 8 },
-  ghostButtonText: { fontFamily: fonts.bold, color: colors.textMuted, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1 },
-  });
+  schemeBtnTextActive: { color: colors.accentText },  });
 }

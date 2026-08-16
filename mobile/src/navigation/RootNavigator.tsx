@@ -35,7 +35,7 @@ export default function RootNavigator() {
       background: colors.bg,
       card: colors.bg,
       border: colors.border,
-      primary: colors.accent,
+      primary: colors.accentInk,
       text: colors.text,
     },
   };
@@ -51,7 +51,7 @@ export default function RootNavigator() {
   if (authLoading) {
     return (
       <View style={[styles.loading, { backgroundColor: colors.bg }]}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <ActivityIndicator size="large" color={colors.accentInk} />
       </View>
     );
   }

@@ -18,7 +18,7 @@ export async function setCompletionAlertsEnabled(enabled: boolean): Promise<void
 
 export async function getThemeScheme(): Promise<ColorScheme> {
   const value = await AsyncStorage.getItem(THEME_SCHEME_KEY);
-  return value === "light" ? "light" : "dark"; // default dark — the app's original look
+  return value === "dark" ? "dark" : "light"; // default light; an explicit choice still wins
 }
 
 export async function setThemeScheme(scheme: ColorScheme): Promise<void> {

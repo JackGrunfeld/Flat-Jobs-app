@@ -1,16 +1,14 @@
-import React from "react";
-import { StyleSheet } from "react-native";
+import React, { useMemo } from "react";
+import { Easing, useWindowDimensions } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { LinearGradient } from "expo-linear-gradient";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { BottomTabNavigationOptions } from "@react-navigation/bottom-tabs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import HouseScreen from "../screens/HouseScreen";
 import ShoppingScreen from "../screens/ShoppingScreen";
 import SplitwiseScreen from "../screens/SplitwiseScreen";
 import SwipeableTabScreen from "./SwipeableTabScreen";
-import { useTheme } from "../context/ThemeContext";
-import { withAlpha } from "../theme/colors";
+import FlatTabBar from "./FlatTabBar";
 
 export type MainTabParamList = {
   Home: undefined;
@@ -21,18 +19,59 @@ export type MainTabParamList = {
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// Matches the icon-only bar's default content height — padding above and
-// below is built symmetrically around this so the icons sit centred rather
-// than crowded toward one edge.
-const BAR_CONTENT_HEIGHT = 40;
-const BAR_PADDING = 14;
-
 export default function MainTabNavigator() {
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
+  // Read live rather than off Dimensions at module scope, so the slide still
+  // covers the screen after a rotation or a split-screen resize.
+  const { width } = useWindowDimensions();
+
+  const screenOptions = useMemo<BottomTabNavigationOptions>(
+    () => ({
+      headerShown: false,
+      tabBarShowLabel: false,
+      // Mounted upfront rather than on first visit: the pages are meant to be
+      // there already and slide into view, and a tab that mounts as it enters
+      // spends the first frames of its own arrival blank. Data still loads on
+      // focus, so this costs render time, not requests.
+      lazy: false,
+      // The tabs are pages side by side, and changing tab slides the strip
+      // along — the one you're leaving goes a full screen-width out as the one
+      // you're arriving at comes in from the opposite edge, the way a phone's
+      // home screen moves. `progress` is -1 for a screen sitting left of the
+      // active tab, 0 for the active one and +1 for one to its right, so a
+      // width-for-width mapping is the whole animation. Both screens stay
+      // rendered for the duration, so they travel together as one strip
+      // instead of one appearing once the other has gone.
+      //
+      // Deliberately not one of the named animations: `shift` nudges a screen
+      // 50pt and cross-fades it, which reads as a dissolve rather than as the
+      // page having moved somewhere.
+      sceneStyleInterpolator: ({ current }) => ({
+        sceneStyle: {
+          transform: [
+            {
+              translateX: current.progress.interpolate({
+                inputRange: [-1, 0, 1],
+                outputRange: [-width, 0, width],
+              }),
+            },
+          ],
+        },
+      }),
+      // Eases out rather than springing: a page that's been flicked should
+      // carry its momentum and settle, not overshoot and come back.
+      transitionSpec: {
+        animation: "timing",
+        config: { duration: 260, easing: Easing.out(Easing.cubic) },
+      },
+    }),
+    [width],
+  );
 
   return (
     <Tab.Navigator
+      // The bar itself is ours — a pill with a raised centre "+" whose action
+      // depends on the focused tab. See FlatTabBar.
+      tabBar={(props) => <FlatTabBar {...props} />}
       // Every tab screen is wrapped so a horizontal drag walks to the
       // neighbouring tab; the bar's buttons still work exactly as before.
       screenLayout={({ navigation, route, children }) => (
@@ -40,32 +79,7 @@ export default function MainTabNavigator() {
           {children}
         </SwipeableTabScreen>
       )}
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        // Slides the outgoing/incoming screen in the direction of travel, so a
-        // swipe (and a tap) reads as movement between tabs rather than a cut.
-        animation: "shift",
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: {
-          backgroundColor: "transparent",
-          borderTopWidth: 0,
-          height: BAR_CONTENT_HEIGHT + BAR_PADDING * 2 + insets.bottom,
-          paddingTop: BAR_PADDING,
-          paddingBottom: BAR_PADDING + insets.bottom,
-        },
-        // Renders behind the icons only — the gradient fades from a
-        // translucent version of the background colour at the top edge to
-        // fully solid by the bottom, so the icons themselves stay untouched.
-        tabBarBackground: () => (
-          <LinearGradient
-            colors={[withAlpha(colors.bg, 0.4), colors.bg]}
-            locations={[0, 0.7]}
-            style={StyleSheet.absoluteFill}
-          />
-        ),
-      }}
+      screenOptions={screenOptions}
     >
       <Tab.Screen
         name="Home"

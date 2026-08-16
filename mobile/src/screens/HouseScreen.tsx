@@ -1,17 +1,23 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, Text, Pressable, StyleSheet, ScrollView, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import * as choresService from "../services/choresService";
 import * as completionsService from "../services/completionsService";
 import { fireCompletionAlert } from "../notifications/completionAlerts";
-import { getCurrentWeek, getWeekDates, getPeriodIndex } from "../utils/rosterHelpers";
+import { assignChores, getDayIndex, getPeriodIndex } from "../utils/rosterHelpers";
 import { useTheme } from "../context/ThemeContext";
+import { relativeLuminance } from "../theme/colorMath";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import SettingsButton from "../components/SettingsButton";
+import ChoreFormModal, { FREQUENCIES, type ChoreFormValues } from "../components/ChoreFormModal";
+import DayStrip from "../components/DayStrip";
+import { useRegisterAddAction } from "../navigation/AddActionContext";
+import { Ionicons } from "@expo/vector-icons";
 import type { Chore, Completion, FlatMember } from "../types";
 
 type Assignment = {
@@ -20,11 +26,53 @@ type Assignment = {
   done: boolean;
 };
 
-// The card face sits on a flatmate's own colour, so its palette is fixed
-// rather than themed — black-on-colour reads correctly in light and dark
-// alike, the same reason member colours themselves never invert.
-const ON_CARD_INK = "#272525";
-const ON_CARD_NAME = "#000000";
+// The card face sits on a flatmate's own colour, so its palette follows that
+// colour rather than the theme — member colours never invert, and a pastel
+// takes black ink while a deep one takes white.
+const CARD_HEADER_HEIGHT = 72;
+// Past this many chore chips the row stops naming them and trails off, rather
+// than shrinking every chip until none of them is readable.
+const MAX_TASK_CHIPS = 3;
+
+// Inside the tick box's 3pt border: 24 − 6. The slices are cut from discs a
+// little wider than the box's own half-diagonal (18/√2 ≈ 12.7) so a full sweep
+// reaches into the corners instead of leaving a circle inscribed in a square.
+const PIE_HALF = 9;
+const PIE_RADIUS = 15;
+
+type CardInk = {
+  /** The flatmate's name and the tick box. */
+  strong: string;
+  /** Chore chips: their text and their outline. */
+  body: string;
+  muted: string;
+  hairline: string;
+  /** Sits inside a filled tick box, so it has to be the card colour itself. */
+  onStrong: string;
+};
+
+const BLACK_INK: CardInk = {
+  strong: "#000000",
+  body: "rgba(0,0,0,0.78)",
+  muted: "rgba(0,0,0,0.5)",
+  hairline: "rgba(0,0,0,0.12)",
+  onStrong: "#ffffff",
+};
+
+const WHITE_INK: CardInk = {
+  strong: "#ffffff",
+  body: "rgba(255,255,255,0.88)",
+  muted: "rgba(255,255,255,0.65)",
+  hairline: "rgba(255,255,255,0.2)",
+  onStrong: "#000000",
+};
+
+// Luminance, not HSL lightness: a saturated yellow and a saturated blue can
+// claim the same lightness and be nowhere near equally readable in black.
+function inkFor(background: string): CardInk {
+  if (!/^#[0-9a-fA-F]{6}$/.test(background)) return BLACK_INK;
+  return relativeLuminance(background) > 0.35 ? BLACK_INK : WHITE_INK;
+}
 
 // First name only — the card name is set large and chunky, so a full name
 // would wrap. Falls back to "First L." when two flatmates share a first name.
@@ -40,17 +88,95 @@ function buildDisplayNames(members: FlatMember[]): Record<string, string> {
   return out;
 }
 
+// How far through a flatmate's jobs they are, drawn as a pizza: the fill
+// sweeps clockwise from twelve o'clock, so one of four is a quarter slice.
+//
+// Two half-discs behind two half-width windows, because there's no arc to draw
+// with — a half-disc rotated inside a window that only shows one side of the
+// box exposes exactly the sector between them. The first window covers the
+// first half of the sweep, the second takes over past 50%.
+function PieFill({
+  progress,
+  color,
+  styles,
+}: {
+  progress: number;
+  color: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const sweep = Math.max(0, Math.min(1, progress)) * 360;
+  const rightRotation = useRef(new Animated.Value(Math.min(sweep, 180) - 180)).current;
+  const leftRotation = useRef(new Animated.Value(sweep > 180 ? sweep - 360 : -180)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(rightRotation, {
+        toValue: Math.min(sweep, 180) - 180,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.timing(leftRotation, {
+        toValue: sweep > 180 ? sweep - 360 : -180,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [leftRotation, rightRotation, sweep]);
+
+  return (
+    <View style={styles.pie} pointerEvents="none">
+      <View style={styles.pieWindowRight}>
+        <Animated.View
+          style={[
+            styles.pieSliceRight,
+            { backgroundColor: color },
+            {
+              transform: [{ rotate: rightRotation.interpolate({ inputRange: [-180, 180], outputRange: ["-180deg", "180deg"] }) }],
+            },
+          ]}
+        />
+      </View>
+      {sweep > 180 && (
+        <View style={styles.pieWindowLeft}>
+          <Animated.View
+            style={[
+              styles.pieSliceLeft,
+              { backgroundColor: color },
+              {
+                transform: [{ rotate: leftRotation.interpolate({ inputRange: [-180, 180], outputRange: ["-180deg", "180deg"] }) }],
+              },
+            ]}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Week navigator + one block-coloured card per flatmate, tapped to drop down
 // the individual chores behind it. Flat config (name/code, flatmates,
 // invites, chore list editor) lives on the Settings tab.
 export default function HouseScreen() {
   const insets = useSafeAreaInsets();
+  // The tab bar floats over the page, so the last row needs
+  // somewhere to scroll clear to.
+  const tabBarSpace = useTabBarSpace();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat } = useAuth();
   const [chores, setChores] = useState<Chore[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
-  const [week, setWeek] = useState(getCurrentWeek());
+  // The strip picks a day, and the day is what the roster is read for — each
+  // chore resolving it against its own cadence. Both start at local midnight
+  // today, and `today` is held separately so the strip can keep marking it
+  // once the selection has moved off.
+  const getTodayStart = useCallback(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }, []);
+  const [today, setToday] = useState<Date>(() => getTodayStart());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => getTodayStart());
+  const [previewDate, setPreviewDate] = useState<Date>(() => getTodayStart());
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -65,33 +191,114 @@ export default function HouseScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      const todayStart = getTodayStart();
+      setToday(todayStart);
+      setSelectedDate(todayStart);
+      setPreviewDate(todayStart);
       load();
-    }, [load]),
+    }, [getTodayStart, load]),
   );
 
-  const assignmentsForWeek = useMemo<Assignment[]>(() => {
+  // Chore management moved here from Settings — the tab bar's "+" opens the
+  // form for a new chore, and each row in the list below reopens it to edit.
+  const [choreForm, setChoreForm] = useState<{ open: boolean; chore: Chore | null }>({
+    open: false,
+    chore: null,
+  });
+  const [expandedChoreId, setExpandedChoreId] = useState<string | null>(null);
+  // Collapsed by default: the day's roster is what the tab is for, and the
+  // full list is long enough to bury it.
+  const [showAllChores, setShowAllChores] = useState(false);
+
+  useRegisterAddAction("House", () => setChoreForm({ open: true, chore: null }));
+
+  const submitChoreForm = async (values: ChoreFormValues) => {
+    if (!userFlat) return;
+    if (choreForm.chore) await choresService.updateChore(userFlat.id, choreForm.chore.id, values);
+    else await choresService.addChore(userFlat.id, values);
+    await load();
+  };
+
+  const deleteChore = async (choreId: string) => {
+    if (!userFlat) return;
+    if (expandedChoreId === choreId) setExpandedChoreId(null);
+    await choresService.deleteChore(userFlat.id, choreId);
+    await load();
+  };
+
+  const choresByFrequency = useMemo(
+    () =>
+      FREQUENCIES.map((freq) => ({ freq, items: chores.filter((c) => c.frequency === freq) })).filter(
+        (g) => g.items.length > 0,
+      ),
+    [chores],
+  );
+
+  // What each chore looks like on the selected day. A weekly chore is the same
+  // all week and a monthly one all month, so this only really changes day to
+  // day for the daily ones — which is exactly the point of picking a day.
+  //
+  // `Completion.week` is the *period* a completion belongs to, not a week
+  // index: a week for weekly chores, a day for daily, a month for monthly.
+  // The field kept its old name because it's the wire and column name too.
+  const assignmentsForDay = useMemo<Assignment[]>(() => {
     if (!userFlat) return [];
     const flatMemberIds = userFlat.members.map((m) => m.userId);
-    const completionByChoreWeek = new Map(completions.map((c) => [`${c.choreId}:${c.week}`, c]));
+    const completionByChorePeriod = new Map(completions.map((c) => [`${c.choreId}:${c.week}`, c]));
 
-    return chores.map((chore) => {
-      const pool = chore.memberIds.length > 0 ? chore.memberIds : flatMemberIds;
-      const periodIndex = getPeriodIndex(chore.frequency, week);
-      const assignedUserId = pool.length > 0 ? pool[periodIndex % pool.length] : null;
-      return {
-        chore,
-        assignedUserId,
-        done: completionByChoreWeek.get(`${chore.id}:${week}`)?.done ?? false,
-      };
-    });
-  }, [chores, completions, userFlat, week]);
+    const assignedTo = assignChores(chores, flatMemberIds, selectedDate);
+
+    return chores.map((chore) => ({
+      chore,
+      assignedUserId: assignedTo.get(chore.id) ?? null,
+      done:
+        completionByChorePeriod.get(`${chore.id}:${getPeriodIndex(chore.frequency, selectedDate)}`)?.done ??
+        false,
+    }));
+  }, [chores, completions, userFlat, selectedDate]);
+
+  // The marker under each day in the strip: green once everything standing on
+  // that day is done, accent while any of it is outstanding. Genuinely per-day
+  // — a daily chore moves on every tile, while the weekly and monthly ones it
+  // shares the day with hold their state across the run they belong to.
+  //
+  // Cached by day, because the strip asks again every time a tile scrolls back
+  // into view and the answer can't have changed in between.
+  const dotFor = useMemo(() => {
+    const cache = new Map<number, string | null>();
+    const flatMemberIds = userFlat?.members.map((m) => m.userId) ?? [];
+    const completionByChorePeriod = new Map(completions.map((c) => [`${c.choreId}:${c.week}`, c]));
+
+    return (date: Date) => {
+      const dayIndex = getDayIndex(date);
+      const cached = cache.get(dayIndex);
+      if (cached !== undefined) return cached;
+
+      const assignedTo = assignChores(chores, flatMemberIds, date);
+      let total = 0;
+      let done = 0;
+      for (const chore of chores) {
+        if (!assignedTo.get(chore.id)) continue;
+        total += 1;
+        if (completionByChorePeriod.get(`${chore.id}:${getPeriodIndex(chore.frequency, date)}`)?.done) {
+          done += 1;
+        }
+      }
+
+      // A day with nothing on it draws nothing at all, rather than a grey dot
+      // that has to be told apart from a live one at 6pt across.
+      const color = total === 0 ? null : done === total ? colors.success : colors.accentInk;
+      cache.set(dayIndex, color);
+      return color;
+    };
+  }, [chores, completions, userFlat, colors.success, colors.accentInk]);
 
   // Every flatmate gets a card, including those with nothing on this week —
   // they read as "Off Duty" rather than silently vanishing from the roster.
   const rosterCards = useMemo(() => {
     if (!userFlat) return [];
     const byMember = new Map<string, Assignment[]>(userFlat.members.map((m) => [m.userId, []]));
-    for (const a of assignmentsForWeek) {
+    for (const a of assignmentsForDay) {
       if (a.assignedUserId && byMember.has(a.assignedUserId)) {
         byMember.get(a.assignedUserId)!.push(a);
       }
@@ -109,24 +316,34 @@ export default function HouseScreen() {
         items,
         main,
         monthly,
+        mainDone: main.filter((i) => i.done).length,
         allMainDone: main.length > 0 && main.every((i) => i.done),
       };
     });
-  }, [assignmentsForWeek, userFlat]);
+  }, [assignmentsForDay, userFlat]);
 
-  const doneCount = assignmentsForWeek.filter((a) => a.done).length;
+  const doneCount = assignmentsForDay.filter((a) => a.done).length;
 
   const setDone = async (items: Assignment[], nextDone: boolean) => {
     if (!userFlat) return;
     const targets = items.filter((i) => i.assignedUserId);
     if (targets.length === 0) return;
 
+    // Each chore is stored against its own cadence's period, so a mixed
+    // selection writes to a mix of day, week and month slots.
+    const periodOf = (chore: Chore) => getPeriodIndex(chore.frequency, selectedDate);
+
     setCompletions((prev) => {
-      const touched = new Set(targets.map((t) => t.chore.id));
-      const others = prev.filter((c) => !(touched.has(c.choreId) && c.week === week));
+      const touched = new Map(targets.map((t) => [t.chore.id, periodOf(t.chore)]));
+      const others = prev.filter((c) => touched.get(c.choreId) !== c.week);
       return [
         ...others,
-        ...targets.map((t) => ({ choreId: t.chore.id, week, assignedUserId: t.assignedUserId!, done: nextDone })),
+        ...targets.map((t) => ({
+          choreId: t.chore.id,
+          week: periodOf(t.chore),
+          assignedUserId: t.assignedUserId!,
+          done: nextDone,
+        })),
       ];
     });
 
@@ -134,7 +351,7 @@ export default function HouseScreen() {
       targets.map((t) =>
         completionsService.saveCompletion(userFlat.id, {
           choreId: t.chore.id,
-          week,
+          week: periodOf(t.chore),
           assignedUserId: t.assignedUserId!,
           done: nextDone,
         }),
@@ -150,27 +367,38 @@ export default function HouseScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView style={[styles.container, { paddingTop: insets.top + 16 }]}>
+      <ScrollView
+        style={[styles.container, { paddingTop: insets.top + 16 }]}
+        contentContainerStyle={{ paddingBottom: tabBarSpace }}
+      >
         <Text style={styles.pageTitle}>Chores</Text>
 
-        <View style={styles.weekNav}>
-          <Pressable onPress={() => setWeek((w) => w - 1)} hitSlop={8}>
-            <Text style={styles.weekNavArrow}>‹</Text>
-          </Pressable>
-          <Text style={styles.weekLabel}>{getWeekDates(week)}</Text>
-          <Pressable onPress={() => setWeek((w) => w + 1)} hitSlop={8}>
-            <Text style={styles.weekNavArrow}>›</Text>
-          </Pressable>
-        </View>
+        <DayStrip
+          selected={selectedDate}
+          today={today}
+          onSelect={setSelectedDate}
+          onPreview={setPreviewDate}
+          dotFor={dotFor}
+        />
 
+        {/* Names the day in full. Only the daily chores actually change from
+            one tile to the next, so without this, tapping along a week looks
+            like nothing happened. */}
         <Text style={styles.stats}>
-          {doneCount}/{assignmentsForWeek.length} done this week
+          {previewDate.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} ·{" "}
+          {doneCount}/{assignmentsForDay.length} done
         </Text>
 
         {rosterCards.map((card) => {
           const offDuty = card.items.length === 0;
           const expanded = expandedUserId === card.member.userId;
-          const label = card.main.length === 0 ? "Off Duty" : card.main.map((i) => i.chore.name).join(" + ");
+          const background = card.member.color ?? colors.accent;
+          const ink = inkFor(background);
+          // Each job is its own outlined chip on one line — the row clips
+          // rather than wraps, so every card keeps the same height.
+          const taskNames = card.main.length === 0 ? ["Off Duty"] : card.main.map((i) => i.chore.name);
+          const shownNames = taskNames.slice(0, MAX_TASK_CHIPS);
+          const truncated = taskNames.length > shownNames.length;
           // A single weekly chore says everything on the front of the card, so
           // the drop-down shows its description instead of repeating the name.
           const showLoneDescription = card.main.length === 1 && card.monthly.length === 0;
@@ -180,7 +408,7 @@ export default function HouseScreen() {
               key={card.member.userId}
               style={({ pressed }) => [
                 styles.choreCard,
-                { backgroundColor: card.member.color ?? colors.accent },
+                { backgroundColor: background },
                 pressed && !offDuty && styles.choreCardPressed,
               ]}
               onPress={() => !offDuty && setExpandedUserId(expanded ? null : card.member.userId)}
@@ -188,32 +416,60 @@ export default function HouseScreen() {
             >
               <View style={styles.cardHeaderRow}>
                 <View style={styles.choreInfo}>
-                  <Text style={styles.choreName} numberOfLines={1}>
+                  <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
                     {card.displayName}
                   </Text>
                   <View style={styles.choreTaskRow}>
-                    <Text style={styles.choreTask} numberOfLines={2}>
-                      {label}
-                    </Text>
-                    {card.monthly.length > 0 && <Text style={styles.monthlyCardBadge}>M</Text>}
+                    {shownNames.map((name) => (
+                      <View key={name} style={[styles.taskChip, { borderColor: ink.body }]}>
+                        <Text style={[styles.taskChipText, { color: ink.body }]} numberOfLines={1}>
+                          {name}
+                        </Text>
+                      </View>
+                    ))}
+                    {truncated && <Text style={[styles.taskOverflow, { color: ink.muted }]}>…</Text>}
+                    {card.monthly.length > 0 && (
+                      <Text style={[styles.monthlyCardBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                        M
+                      </Text>
+                    )}
                   </View>
                 </View>
 
-                {card.main.length > 0 && (
+                {/* One job: the drop-down only carries its description, so the
+                    box stays the way to tick it. Several: it's a read-out of
+                    how many are done, ticked off individually below, because a
+                    single tap clearing four jobs at once was too easy to hit. */}
+                {card.main.length === 1 && (
                   <Pressable
                     onPress={() => setDone(card.main, !card.allMainDone)}
                     hitSlop={10}
-                    style={[styles.checkbox, card.allMainDone && styles.checkboxDone]}
+                    style={[
+                      styles.checkbox,
+                      { borderColor: ink.strong },
+                      card.allMainDone && { backgroundColor: ink.strong },
+                    ]}
                   >
-                    {card.allMainDone && <Text style={styles.checkmark}>✓</Text>}
+                    {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
                   </Pressable>
+                )}
+
+                {card.main.length > 1 && (
+                  <View style={[styles.checkbox, { borderColor: ink.strong }]}>
+                    <PieFill
+                      styles={styles}
+                      progress={card.mainDone / card.main.length}
+                      color={ink.strong}
+                    />
+                    {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                  </View>
                 )}
               </View>
 
               {expanded && (
-                <View style={styles.details}>
+                <View style={[styles.details, { borderTopColor: ink.hairline }]}>
                   {showLoneDescription && (
-                    <Text style={styles.detailText}>
+                    <Text style={[styles.detailText, { color: ink.body }]}>
                       {card.main[0].chore.description?.trim() || "No description added."}
                     </Text>
                   )}
@@ -222,20 +478,28 @@ export default function HouseScreen() {
                     card.main.map((item, i) => (
                       <View
                         key={item.chore.id}
-                        style={[styles.subTaskRow, i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast]}
+                        style={[
+                          styles.subTaskRow,
+                          { borderBottomColor: ink.hairline },
+                          i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast,
+                        ]}
                       >
                         <View style={styles.subTaskInfo}>
-                          <Text style={styles.subTaskName}>{item.chore.name}</Text>
+                          <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
                           {!!item.chore.description?.trim() && (
-                            <Text style={styles.subTaskDesc}>{item.chore.description}</Text>
+                            <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
                           )}
                         </View>
                         <Pressable
                           onPress={() => setDone([item], !item.done)}
                           hitSlop={10}
-                          style={[styles.checkbox, item.done && styles.checkboxDone]}
+                          style={[
+                            styles.checkbox,
+                            { borderColor: ink.strong },
+                            item.done && { backgroundColor: ink.strong },
+                          ]}
                         >
-                          {item.done && <Text style={styles.checkmark}>✓</Text>}
+                          {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
                         </Pressable>
                       </View>
                     ))}
@@ -243,21 +507,31 @@ export default function HouseScreen() {
                   {card.monthly.map((item, i) => (
                     <View
                       key={item.chore.id}
-                      style={[styles.subTaskRow, i === card.monthly.length - 1 && styles.subTaskRowLast]}
+                      style={[
+                        styles.subTaskRow,
+                        { borderBottomColor: ink.hairline },
+                        i === card.monthly.length - 1 && styles.subTaskRowLast,
+                      ]}
                     >
                       <View style={styles.subTaskInfo}>
-                        <Text style={styles.monthlyBadge}>Monthly</Text>
-                        <Text style={styles.subTaskName}>{item.chore.name}</Text>
+                        <Text style={[styles.monthlyBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                          Monthly
+                        </Text>
+                        <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
                         {!!item.chore.description?.trim() && (
-                          <Text style={styles.subTaskDesc}>{item.chore.description}</Text>
+                          <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
                         )}
                       </View>
                       <Pressable
                         onPress={() => setDone([item], !item.done)}
                         hitSlop={10}
-                        style={[styles.checkbox, item.done && styles.checkboxDone]}
+                        style={[
+                          styles.checkbox,
+                          { borderColor: ink.strong },
+                          item.done && { backgroundColor: ink.strong },
+                        ]}
                       >
-                        {item.done && <Text style={styles.checkmark}>✓</Text>}
+                        {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
                       </Pressable>
                     </View>
                   ))}
@@ -267,8 +541,95 @@ export default function HouseScreen() {
           );
         })}
 
-        {chores.length === 0 && <Text style={styles.empty}>No chores yet — add some from Settings.</Text>}
+        {chores.length === 0 && <Text style={styles.empty}>No chores yet — tap + to add one.</Text>}
+
+        {choresByFrequency.length > 0 && (
+          <>
+            <Pressable
+              style={styles.manageTitleRow}
+              onPress={() => setShowAllChores((open) => !open)}
+              hitSlop={6}
+            >
+              <Text style={styles.manageTitle}>All chores</Text>
+              <Text style={styles.manageCount}>{chores.length}</Text>
+              <Ionicons
+                name={showAllChores ? "chevron-up" : "chevron-down"}
+                size={18}
+                color={colors.textMuted}
+              />
+            </Pressable>
+            {showAllChores &&
+              choresByFrequency.map(({ freq, items }) => (
+                <View key={freq}>
+                  <Text style={styles.groupLabel}>{freq}</Text>
+                  {items.map((chore) => {
+                    const expanded = expandedChoreId === chore.id;
+                    const choreMembers = userFlat.members.filter((m) => chore.memberIds.includes(m.userId));
+                    return (
+                      <View key={chore.id} style={styles.manageCard}>
+                        <Pressable
+                          style={styles.manageCardHeader}
+                          onPress={() => setExpandedChoreId(expanded ? null : chore.id)}
+                        >
+                          <View style={styles.flex1}>
+                            <Text style={styles.manageChoreName}>{chore.name}</Text>
+                            <View style={styles.choreFreqBadge}>
+                              <Text style={styles.choreFreqBadgeText}>{chore.frequency}</Text>
+                            </View>
+                          </View>
+                          <View style={styles.choreActions}>
+                            <Pressable
+                              style={styles.iconButton}
+                              onPress={() => setChoreForm({ open: true, chore })}
+                              hitSlop={8}
+                            >
+                              <Ionicons name="pencil" size={13} color={colors.textMuted} />
+                            </Pressable>
+                            <Pressable style={styles.iconButton} onPress={() => deleteChore(chore.id)} hitSlop={8}>
+                              <Ionicons name="trash-outline" size={13} color={colors.danger} />
+                            </Pressable>
+                            <Text style={styles.chevron}>{expanded ? "−" : "+"}</Text>
+                          </View>
+                        </Pressable>
+                        {expanded && (
+                          <View style={styles.manageCardBody}>
+                            {chore.description?.trim() ? (
+                              <Text style={styles.choreDescription}>{chore.description}</Text>
+                            ) : (
+                              <Text style={styles.choreDescEmpty}>No description.</Text>
+                            )}
+                            {choreMembers.length > 0 ? (
+                              <View style={styles.choreMemberRow}>
+                                {choreMembers.map((m) => (
+                                  <View
+                                    key={m.userId}
+                                    style={[styles.choreMemberChip, { backgroundColor: m.color ?? colors.accent }]}
+                                  >
+                                    <Text style={styles.choreMemberChipText}>{m.displayName}</Text>
+                                  </View>
+                                ))}
+                              </View>
+                            ) : (
+                              <Text style={styles.choreDescEmpty}>All flatmates.</Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+          </>
+        )}
       </ScrollView>
+
+      <ChoreFormModal
+        visible={choreForm.open}
+        chore={choreForm.chore}
+        members={userFlat.members}
+        onClose={() => setChoreForm({ open: false, chore: null })}
+        onSubmit={submitChoreForm}
+      />
       <SettingsButton />
     </View>
   );
@@ -287,9 +648,6 @@ function createStyles(colors: ThemeColors) {
       textAlign: "center",
       marginBottom: 16,
     },
-    weekNav: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 24, marginBottom: 8 },
-    weekNavArrow: { fontFamily: fonts.regular, fontSize: typeScale.subheading, color: colors.accent, paddingHorizontal: 12 },
-    weekLabel: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 1, textTransform: "uppercase", color: colors.text },
     stats: {
       fontFamily: fonts.bold,
       textAlign: "center",
@@ -301,58 +659,101 @@ function createStyles(colors: ThemeColors) {
     },
 
     // ── The block-coloured roster card ──
+    // Every card is the full column width and, collapsed, exactly one header
+    // tall — the chip row clips instead of wrapping to keep it that way.
     choreCard: { borderRadius: 12, paddingVertical: 16, paddingHorizontal: 20, marginBottom: 10 },
     choreCardPressed: { transform: [{ scale: 0.98 }] },
-    cardHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+    cardHeaderRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+      height: CARD_HEADER_HEIGHT,
+    },
     choreInfo: { flex: 1 },
     choreName: {
       fontFamily: fonts.display,
       fontSize: 26,
-      color: ON_CARD_NAME,
       textTransform: "uppercase",
       letterSpacing: -1,
     },
-    choreTaskRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 2 },
-    choreTask: {
-      flexShrink: 1,
-      fontFamily: fonts.bold,
-      fontSize: 15,
-      color: ON_CARD_INK,
-      letterSpacing: -0.5,
-      opacity: 0.85,
+    choreTaskRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "nowrap",
+      overflow: "hidden",
+      gap: 6,
+      marginTop: 4,
     },
+    // Outline only: the card is already a solid block of colour, so a filled
+    // chip on top of it would read as a second, competing surface.
+    taskChip: {
+      flexShrink: 1,
+      borderWidth: 1.5,
+      borderRadius: 6,
+      paddingVertical: 2,
+      paddingHorizontal: 7,
+    },
+    taskChipText: {
+      fontFamily: fonts.bold,
+      fontSize: 13,
+      letterSpacing: -0.3,
+    },
+    taskOverflow: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 1 },
     monthlyCardBadge: {
       fontFamily: fonts.bold,
       fontSize: 9,
       textTransform: "uppercase",
       letterSpacing: 1,
-      color: "rgba(0,0,0,0.55)",
-      backgroundColor: "rgba(0,0,0,0.12)",
       borderRadius: 4,
       paddingVertical: 1,
       paddingHorizontal: 5,
       overflow: "hidden",
     },
 
-    // Filled with the same near-black as the border rather than the brand
-    // accent: the card behind it is an arbitrary flatmate colour, and a dark
-    // fill is the only one guaranteed to read as "ticked" against all of them.
+    // Border and fill both come from the card's own ink, so the tick reads
+    // against an arbitrary flatmate colour, pastel or deep.
     checkbox: {
       width: 24,
       height: 24,
       borderWidth: 3,
-      borderColor: ON_CARD_INK,
       borderRadius: 6,
       backgroundColor: "transparent",
       alignItems: "center",
       justifyContent: "center",
+      overflow: "hidden",
     },
-    checkboxDone: { backgroundColor: ON_CARD_INK, borderColor: ON_CARD_INK },
-    checkmark: { fontFamily: fonts.bold, color: "#fff", fontSize: 13, lineHeight: 16 },
+    // The pie is squared off by the box clipping it, so the last slice lands
+    // as a solid tick box rather than a circle floating in a square.
+    pie: { position: "absolute", left: 0, right: 0, top: 0, bottom: 0 },
+    pieWindowRight: { position: "absolute", top: 0, bottom: 0, left: PIE_HALF, width: PIE_HALF, overflow: "hidden" },
+    pieWindowLeft: { position: "absolute", top: 0, bottom: 0, left: 0, width: PIE_HALF, overflow: "hidden" },
+    // Overhangs the window so the corners of the box still fill in.
+    pieSliceRight: {
+      position: "absolute",
+      left: 0,
+      top: PIE_HALF - PIE_RADIUS,
+      width: PIE_RADIUS,
+      height: PIE_RADIUS * 2,
+      borderTopRightRadius: PIE_RADIUS,
+      borderBottomRightRadius: PIE_RADIUS,
+      transformOrigin: "left center",
+    },
+    pieSliceLeft: {
+      position: "absolute",
+      right: 0,
+      top: PIE_HALF - PIE_RADIUS,
+      width: PIE_RADIUS,
+      height: PIE_RADIUS * 2,
+      borderTopLeftRadius: PIE_RADIUS,
+      borderBottomLeftRadius: PIE_RADIUS,
+      transformOrigin: "right center",
+    },
+    checkmark: { fontFamily: fonts.bold, fontSize: 13, lineHeight: 16 },
 
     // ── Drop-down detail ──
-    details: { width: "100%", marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "rgba(0,0,0,0.1)" },
-    detailText: { fontFamily: fonts.regular, fontSize: 12, color: "rgba(0,0,0,0.7)", lineHeight: 17 },
+    details: { width: "100%", marginTop: 10, paddingTop: 10, borderTopWidth: 1 },
+    detailText: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 17 },
     subTaskRow: {
       flexDirection: "row",
       alignItems: "flex-start",
@@ -360,7 +761,6 @@ function createStyles(colors: ThemeColors) {
       gap: 10,
       paddingVertical: 8,
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(0,0,0,0.08)",
     },
     subTaskRowLast: { borderBottomWidth: 0 },
     subTaskInfo: { flex: 1 },
@@ -369,17 +769,14 @@ function createStyles(colors: ThemeColors) {
       fontSize: 12,
       textTransform: "uppercase",
       letterSpacing: -0.3,
-      color: "rgba(0,0,0,0.75)",
     },
-    subTaskDesc: { fontFamily: fonts.regular, fontSize: 10, color: "rgba(0,0,0,0.5)", marginTop: 3, lineHeight: 14 },
+    subTaskDesc: { fontFamily: fonts.regular, fontSize: 10, marginTop: 3, lineHeight: 14 },
     monthlyBadge: {
       alignSelf: "flex-start",
       fontFamily: fonts.bold,
       fontSize: 8,
       textTransform: "uppercase",
       letterSpacing: 1.5,
-      color: "#fff",
-      backgroundColor: "rgba(0,0,0,0.45)",
       borderRadius: 4,
       paddingVertical: 2,
       paddingHorizontal: 6,
@@ -388,5 +785,77 @@ function createStyles(colors: ThemeColors) {
     },
 
     empty: { fontFamily: fonts.regular, textAlign: "center", color: colors.textMuted, marginBottom: 16 },
+    flex1: { flex: 1 },
+
+    // --- chore management, moved here from the Settings screen -------------
+    manageTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 28,
+      marginBottom: 4,
+      paddingVertical: 4,
+    },
+    manageTitle: {
+      fontFamily: fonts.display,
+      fontSize: typeScale.subheading,
+      letterSpacing: 1,
+      color: colors.text,
+    },
+    // Sits next to the title so the collapsed section still says how much is
+    // behind it.
+    manageCount: {
+      flex: 1,
+      fontFamily: fonts.bold,
+      fontSize: typeScale.caption,
+      color: colors.textMuted,
+    },
+    groupLabel: {
+      fontFamily: fonts.bold,
+      fontSize: typeScale.caption,
+      textTransform: "uppercase",
+      letterSpacing: 1.5,
+      color: colors.textMuted,
+      marginTop: 14,
+      marginBottom: 6,
+    },
+    manageCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      borderRadius: 12,
+      marginBottom: 8,
+    },
+    manageCardHeader: { flexDirection: "row", alignItems: "center", padding: 12, gap: 8 },
+    manageChoreName: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.text },
+    manageCardBody: {
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      gap: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: 10,
+    },
+    choreFreqBadge: { alignSelf: "flex-start", backgroundColor: colors.accentSoft, borderRadius: 4, paddingVertical: 2, paddingHorizontal: 6, marginTop: 4 },
+    choreFreqBadgeText: {
+      fontFamily: fonts.bold,
+      fontSize: typeScale.caption,
+      letterSpacing: 0.5,
+      textTransform: "uppercase",
+      color: colors.accent,
+    },
+    choreActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+    iconButton: { padding: 6 },
+    chevron: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.textMuted, paddingHorizontal: 4 },
+    choreDescription: { fontFamily: fonts.regular, fontSize: typeScale.caption, color: colors.text },
+    choreDescEmpty: { fontFamily: fonts.regular, fontSize: typeScale.caption, color: colors.textMuted, fontStyle: "italic" },
+    choreMemberRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    choreMemberChip: { borderRadius: 8, paddingVertical: 4, paddingHorizontal: 10 },
+    choreMemberChipText: {
+      fontFamily: fonts.bold,
+      fontSize: typeScale.caption,
+      letterSpacing: 0.5,
+      color: "rgba(0,0,0,0.75)",
+    },
   });
 }

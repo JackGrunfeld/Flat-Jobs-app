@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, Modal } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
@@ -6,7 +6,9 @@ import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/dat
 import { Ionicons } from "@expo/vector-icons";
 import AnimatedInput from "../components/AnimatedInput";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { ApiError } from "../services/apiClient";
+import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 
@@ -55,13 +57,18 @@ const SUBTITLE_PAUSE_INDEXES = (() => {
   return indexes;
 })();
 
-function styleForSegment(style: SegmentStyle) {
+// The stylesheet is built per-scheme now, so these two take it as an argument
+// rather than closing over a module-level one.
+type Styles = ReturnType<typeof createStyles>;
+
+function styleForSegment(styles: Styles, style: SegmentStyle) {
   if (style === "bold") return styles.subtitleBold;
   if (style === "cycle") return styles.subtitleCycle;
   return undefined;
 }
 
 function typedSubtitleNodes(
+  styles: Styles,
   visibleChars: number,
   cycleIndex: number,
   cycleWordChars: number,
@@ -76,7 +83,7 @@ function typedSubtitleNodes(
     const shown = typingDone ? seg.text : seg.text.slice(0, Math.max(0, Math.min(visibleChars - consumed, seg.text.length)));
     consumed += seg.text.length;
     if (shown) {
-      const style = styleForSegment(seg.style);
+      const style = styleForSegment(styles, seg.style);
       nodes.push(
         style ? (
           <Text key={idx} style={style}>
@@ -101,6 +108,19 @@ function typedSubtitleNodes(
 // Google/Apple sign-in alongside email/password (email/password kept per the
 // migration plan's decision to offer all three).
 export default function AuthScreen() {
+  const { colors, scheme } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  // Nobody's signed in yet, so the palette is the plain scheme one — there's
+  // no member colour to accent it with until after this screen.
+  const inputTheme = useMemo(
+    () => ({
+      accentColor: colors.accentInk,
+      idleBorderColor: colors.inputBorder,
+      idleLabelColor: colors.textMuted,
+      idleTextColor: colors.textMuted,
+    }),
+    [colors],
+  );
   const { signup, login, loginWithGoogle, loginWithApple } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [name, setName] = useState("");
@@ -253,6 +273,7 @@ export default function AuthScreen() {
       </View>
       <Text style={styles.subtitle}>
         {typedSubtitleNodes(
+          styles,
           visibleChars,
           cycleIndex,
           cycleWordChars,
@@ -263,6 +284,7 @@ export default function AuthScreen() {
       <View style={styles.formSection}>
         {mode === "signup" && (
           <AnimatedInput
+            {...inputTheme}
             label="Your name"
             error={invalidFields.name}
             value={name}
@@ -276,6 +298,7 @@ export default function AuthScreen() {
           <Pressable onPress={openDatePicker}>
             <View pointerEvents="none">
               <AnimatedInput
+                {...inputTheme}
                 label="Birthday"
                 error={invalidFields.birthday}
                 editable={false}
@@ -285,6 +308,7 @@ export default function AuthScreen() {
           </Pressable>
         )}
         <AnimatedInput
+          {...inputTheme}
           label="Email"
           error={invalidFields.email}
           autoCapitalize="none"
@@ -297,6 +321,7 @@ export default function AuthScreen() {
         />
         <View style={styles.emailPasswordGap} />
         <AnimatedInput
+          {...inputTheme}
           label="Password"
           error={invalidFields.password}
           secureTextEntry
@@ -311,7 +336,7 @@ export default function AuthScreen() {
 
         <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={submitting}>
           {submitting ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.accentText} />
           ) : (
             <Text style={styles.primaryButtonText}>{mode === "signup" ? "Sign up" : "Log in"}</Text>
           )}
@@ -327,12 +352,12 @@ export default function AuthScreen() {
 
         <View style={styles.oauthRow}>
           <Pressable style={styles.circleButton} onPress={handleGoogleSignIn} disabled={submitting}>
-            <Ionicons name="logo-google" size={18} color="#fff" />
+            <Ionicons name="logo-google" size={18} color={colors.text} />
           </Pressable>
 
           {Platform.OS === "ios" && (
             <Pressable style={styles.circleButton} onPress={handleAppleSignIn} disabled={submitting}>
-              <Ionicons name="logo-apple" size={20} color="#fff" />
+              <Ionicons name="logo-apple" size={20} color={colors.text} />
             </Pressable>
           )}
         </View>
@@ -362,7 +387,7 @@ export default function AuthScreen() {
                 mode="date"
                 display="spinner"
                 maximumDate={new Date()}
-                themeVariant="dark"
+                themeVariant={scheme}
                 onChange={(_event, selected) => {
                   if (selected) setBirthday(selected);
                 }}
@@ -378,40 +403,43 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 3, paddingTop: 72, backgroundColor: "#040405" },
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+  container: { flex: 1, padding: 3, paddingTop: 72, backgroundColor: colors.bg },
   titleRow: { flexDirection: "row", alignItems: "baseline", paddingLeft: 20 },
   formSection: { flex: 1, justifyContent: "center", gap: 10, marginTop: 4, width: "82%", alignSelf: "center" },
   emailPasswordGap: { height: 28 },
-  titleFlat: { fontFamily: fonts.regular, fontSize: typeScale.display, color: "#fff" },
-  titleR: { fontFamily: fonts.display, fontSize: typeScale.display, color: "#ed4e04", marginLeft: 2 },
+  titleFlat: { fontFamily: fonts.regular, fontSize: typeScale.display, color: colors.text },
+  // Ink, not the fill: the R is a letter printed on the page, and in light
+  // mode the fill is mixed to sit *under* text rather than to be it.
+  titleR: { fontFamily: fonts.display, fontSize: typeScale.display, color: colors.accentInk, marginLeft: 2 },
   subtitle: {
     fontFamily: fonts.subtitle,
     fontSize: typeScale.subheading,
     lineHeight: 30,
     height: 60,
     letterSpacing: 3,
-    color: "#9CA3AF",
+    color: colors.textMuted,
     marginTop: 24,
     paddingLeft: 20,
   },
   subtitleBold: { fontFamily: fonts.subtitleBold },
-  subtitleCycle: { fontFamily: fonts.subtitleBold, color: "#fff" },
-  subtitleCursor: { fontFamily: fonts.subtitleBold, color: "#ed4e04" },
-  error: { fontFamily: fonts.regular, color: "#DC2626", textAlign: "center" },
-  primaryButton: { backgroundColor: "#ed4e04", borderRadius: 8, padding: 10, alignItems: "center", marginTop: 18},
-  primaryButtonText: { fontFamily: fonts.bold, color: "#fff", fontSize: typeScale.body },
+  subtitleCycle: { fontFamily: fonts.subtitleBold, color: colors.text },
+  subtitleCursor: { fontFamily: fonts.subtitleBold, color: colors.accentInk },
+  error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
+  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 10, alignItems: "center", marginTop: 18},
+  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
 
   secondaryButton: {
     borderWidth: 2,
-    borderColor: "#ed4e04",
+    borderColor: colors.accentInk,
     borderRadius: 8,
     padding: 10,
     alignItems: "center",
     marginTop: 4,
   },
 
-  secondaryButtonText: { fontFamily: fonts.bold, color: "#ed4e04", fontSize: typeScale.body },
+  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
 
   oauthRow: { flexDirection: "row", justifyContent: "center", gap: 16, paddingTop: 28},
   circleButton: {
@@ -419,13 +447,16 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
     borderWidth: 2,
-    borderColor: "#9298a3",
+    borderColor: colors.inputBorder,
     alignItems: "center",
     justifyContent: "center",
   },
 
+  // Stays a dark scrim in both schemes — it's dimming whatever is behind the
+  // sheet, which is the page rather than part of it.
   pickerBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.5)" },
-  pickerSheet: { backgroundColor: "#1a1a1c", borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 24 },
+  pickerSheet: { backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingBottom: 24 },
   pickerDoneButton: { alignItems: "center", paddingVertical: 14, marginHorizontal: 16 },
-  pickerDoneText: { fontFamily: fonts.bold, color: "#ed4e04", fontSize: typeScale.body },
-});
+  pickerDoneText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
+  });
+}

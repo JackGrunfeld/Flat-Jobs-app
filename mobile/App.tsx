@@ -5,9 +5,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useFonts } from "expo-font";
-import { SpaceMono_400Regular, SpaceMono_700Bold } from "@expo-google-fonts/space-mono";
-import { RussoOne_400Regular } from "@expo-google-fonts/russo-one";
-import { NotoSansKR_400Regular, NotoSansKR_700Bold } from "@expo-google-fonts/noto-sans-kr";
+import { DMSans_400Regular, DMSans_700Bold, DMSans_900Black } from "@expo-google-fonts/dm-sans";
 import { AuthProvider } from "./src/context/AuthContext";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import RootNavigator from "./src/navigation/RootNavigator";
@@ -38,11 +36,9 @@ function ThemedApp() {
   // available everywhere, including for users who skip sign-in entirely
   // via a persisted session.
   const [fontsLoaded] = useFonts({
-    SpaceMono_400Regular,
-    SpaceMono_700Bold,
-    RussoOne_400Regular,
-    NotoSansKR_400Regular,
-    NotoSansKR_700Bold,
+    DMSans_400Regular,
+    DMSans_700Bold,
+    DMSans_900Black,
   });
 
   if (!fontsLoaded) {
@@ -51,20 +47,22 @@ function ThemedApp() {
 
   return (
     <>
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      <RootNavigator />
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
     </>
   );
 }
 
+// Auth wraps the theme, not the other way round: the accent is the signed-in
+// member's own colour, so the theme has to be able to read the session.
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <ThemedApp />
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <ThemedApp />
+        </ThemeProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

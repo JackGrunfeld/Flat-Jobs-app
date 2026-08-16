@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { Animated, Pressable, StyleSheet, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 import { useNavigation, type CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -15,21 +15,38 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 // nearest navigator (the tabs) doesn't own that route itself.
 type Nav = CompositeNavigationProp<BottomTabNavigationProp<MainTabParamList>, NativeStackNavigationProp<RootStackParamList>>;
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+type Props = {
+  // Lets a screen animate the button in and out — HomeScreen keeps it out of
+  // sight until the page has been scrolled. Where the button sits stays this
+  // component's business; a caller only layers opacity/transform on top, and
+  // takes `pointerEvents` off with it so an invisible button isn't still a
+  // live tap target in the corner.
+  style?: Animated.WithAnimatedValue<StyleProp<ViewStyle>>;
+  pointerEvents?: ViewProps["pointerEvents"];
+};
+
 // Small gear button pinned to the top-right corner of every tab screen —
 // replaces the old Settings tab, which now frees that slot for Splitwise.
-export default function SettingsButton() {
+export default function SettingsButton({ style, pointerEvents }: Props) {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
   return (
-    <Pressable
-      style={[styles.button, { top: insets.top + 12, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
+    <AnimatedPressable
+      style={[
+        styles.button,
+        { top: insets.top + 12, backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+        style,
+      ]}
+      pointerEvents={pointerEvents}
       onPress={() => navigation.navigate("Settings")}
       hitSlop={10}
     >
       <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 

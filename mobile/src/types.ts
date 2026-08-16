@@ -17,11 +17,23 @@ export type FlatMember = {
 // A row on the flat's communal calendar. Wall-clock date/time rather than an
 // epoch, so an arrangement doesn't drift for a flatmate in another timezone.
 // A null `time` means all-day.
+export type EventRecurrence = "weekly" | "fortnightly" | "monthly" | "yearly";
+export type EventCategory = "rent" | "power" | "internet" | "water" | "rubbish" | "social";
+
 export type FlatEvent = {
   id: string;
   title: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD, first day
+  // Inclusive last day of a multi-day event. Null when it starts and ends the
+  // same day — the server normalises an end equal to the start down to null,
+  // so a span is real whenever this is set.
+  endDate: string | null;
   time: string | null; // HH:MM, 24-hour
+  // The rule, not the dates. Null happens once; otherwise the event repeats
+  // from `date` forever, and which days that lands on is worked out per window
+  // by utils/calendarEvents.ts.
+  recurrence: EventRecurrence | null;
+  category: EventCategory | null;
   createdBy: string;
   createdAt: number;
 };
@@ -29,7 +41,10 @@ export type FlatEvent = {
 export type NewFlatEvent = {
   title: string;
   date: string;
+  endDate: string | null;
   time: string | null;
+  recurrence: EventRecurrence | null;
+  category: EventCategory | null;
 };
 
 // A single dated thing the home screen calendar knows about, from either
@@ -44,6 +59,17 @@ export type CalendarEvent = {
   kind: CalendarEventKind;
   color: string | null;
   time: string | null; // null for all-day (and always null for birthdays)
+  category: EventCategory | null;
+  // Carried through from the rule so the banner can say "every month" — the
+  // expanded days themselves are just dates and would otherwise have no way
+  // of knowing they came from a series.
+  recurrence: EventRecurrence | null;
+  // One entry per day an event covers, so the grid can mark every day of a
+  // span. `isStart` picks out the one day that represents the occurrence
+  // itself — what the banner announces, and what "next up" counts.
+  isStart: boolean;
+  // Days in the span, 1 for an ordinary single-day event.
+  spanDays: number;
 };
 
 export type Flat = {

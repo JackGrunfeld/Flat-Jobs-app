@@ -3,6 +3,7 @@ import { PanResponder, StyleSheet, View } from "react-native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { RouteProp } from "@react-navigation/native";
 import type { MainTabParamList } from "./MainTabNavigator";
+import { isTabSwipeLocked } from "./tabSwipeLock";
 
 // How far a drag has to travel, and how much more horizontal than vertical it
 // has to be, before we take the gesture away from the screen's own children.
@@ -42,6 +43,9 @@ export default function SwipeableTabScreen({ navigation, route, children }: Prop
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_evt, gesture) => {
+        // The finger is on something that scrolls sideways in its own right —
+        // a day strip, a carousel. That drag belongs to it, not to us.
+        if (isTabSwipeLocked()) return false;
         if (Math.abs(gesture.dx) < CLAIM_DISTANCE) return false;
         if (Math.abs(gesture.dx) < Math.abs(gesture.dy) * HORIZONTAL_RATIO) return false;
         // Nothing either side of the first/last tab — leave the gesture alone.

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/michroma": "^0.4.2",
     "@expo-google-fonts/noto-sans-kr": "^0.4.3",
     "@expo-google-fonts/russo-one": "^0.4.1",
