@@ -7,12 +7,14 @@ import {
   Animated,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import * as choresService from "../services/choresService";
 import * as completionsService from "../services/completionsService";
@@ -27,6 +29,7 @@ import SettingsButton from "../components/SettingsButton";
 import CalendarStrip from "../components/CalendarStrip";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
+import { initialsFor } from "../utils/initials";
 import {
   addDays,
   addMonths,
@@ -49,18 +52,23 @@ import type { Chore, Completion, ShoppingItem, Balance, FlatEvent, NewFlatEvent 
 // swipe has its rings — the two must stay in step.
 const CALENDAR_MONTH_RANGE = 12;
 
-// Full height of each stacked card, and how much of it stays visible once the
-// next card overlaps it. The exposed band is what carries that card's
-// information, so it has to fit label + stat + caption.
-// EXPOSED_HEIGHT has to clear padding + icon row + stat + caption (~85pt) or
-// the covered cards lose their caption to the overlap.
-const CARD_HEIGHT = 116;
-const EXPOSED_HEIGHT = 90;
-// Matched to the tick box on the roster's chore cards (HouseScreen's
-// `checkbox`) — same square, same 3pt border, same radius. Kept in step by
-// hand: the two screens have separate stylesheets, so a change to one is a
-// change to make in both.
-const GO_BOX = 24;
+// The mosaic's geometry. Deliberately mismatched: a tall tile on the left
+// beside two shorter ones stacked on the right, with a wide short tile ruled
+// off underneath. Sizes carry the hierarchy — chores are the thing you act on,
+// so they get the big block, and the rest get the space their content needs
+// rather than an equal share.
+const BENTO_GAP = 12;
+// Right column is two tiles plus the gap; the left tile matches their combined
+// height so the two columns finish flush.
+const BENTO_TOP = 122;
+const BENTO_BOTTOM = 100;
+const BENTO_TALL = BENTO_TOP + BENTO_GAP + BENTO_BOTTOM;
+const BENTO_WIDE = 88;
+// Face pile on the wide tile, and the disc on the tall one's attribution row.
+const FACE = 28;
+const FACE_LARGE = 34;
+// How much each face slides under the one before it.
+const FACE_OVERLAP = 9;
 
 // The gear in the corner isn't part of the dashboard, so it stays out of the
 // way until asked for: swiping up the page brings it down into place over this
@@ -83,6 +91,7 @@ const SETTINGS_LIVE_AT = SETTINGS_REVEAL / 2;
 const BILL_HORIZON_DAYS = 14;
 
 type Nav = BottomTabNavigationProp<MainTabParamList>;
+type Styles = ReturnType<typeof createStyles>;
 
 const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -96,7 +105,17 @@ function periodForHour(hour: number) {
 // Staggered fade-up on mount/focus — each tile waits `delay` ms before
 // tweening in, so the dashboard reveals itself tile-by-tile instead of
 // popping in as a flat block.
-function RevealTile({ delay, children }: { delay: number; children: React.ReactNode }) {
+// `style` is what lets a tile also be a flex column of the mosaic — without it
+// the wrapper sizes to its content and collapses the row it sits in.
+function RevealTile({
+  delay,
+  style,
+  children,
+}: {
+  delay: number;
+  style?: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
   const anim = useRef(new Animated.Value(0)).current;
 
   useFocusEffect(
@@ -108,88 +127,94 @@ function RevealTile({ delay, children }: { delay: number; children: React.ReactN
 
   return (
     <Animated.View
-      style={{
-        opacity: anim,
-        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
-      }}
+      style={[
+        style,
+        {
+          opacity: anim,
+          transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+        },
+      ]}
     >
       {children}
     </Animated.View>
   );
 }
 
-// One layer of the stack. A covered card is CARD_HEIGHT tall and pulled up
-// over the one before, so only EXPOSED_HEIGHT of it shows — enough for the
-// label, stat and caption. The last card is cut to EXPOSED_HEIGHT outright,
-// since it has nothing sitting on top of it to hide the difference; every
-// layer in the stack therefore shows a band of exactly the same depth.
-function StackCard({
-  index,
-  icon,
-  label,
-  stat,
-  caption,
-  tone,
-  last,
-  onPress,
+// The pill that heads each tile — a category/status word set in a rounded
+// recess. It's the tile's classification rather than its number, which is what
+// lets the big text below be the value alone.
+function Pill({ text, fg, styles }: { text: string; fg: string; styles: Styles }) {
+  return (
+    <View style={[styles.pill, { backgroundColor: withAlpha(fg, 0.16) }]}>
+      <Text style={[styles.pillText, { color: fg }]}>{text}</Text>
+    </View>
+  );
+}
+
+// Colour+initials disc. Falls back to the card's own foreground when a
+// flatmate hasn't picked a colour yet, so it's never an invisible circle.
+function Avatar({
+  member,
+  size,
+  fg,
   styles,
 }: {
-  index: number;
-  icon: (color: string) => React.ReactNode;
-  label: string;
-  stat: string;
-  caption: string;
-  // The metric's colour, filling the whole card. Everything printed on it
-  // takes whichever of black/white contrasts better, so the tone is free to
-  // be as light or dark as it likes without the text going unreadable.
+  member: { displayName: string; color: string | null };
+  size: number;
+  fg: string;
+  styles: Styles;
+}) {
+  const fill = member.color ?? withAlpha(fg, 0.3);
+  return (
+    <View
+      style={[
+        styles.avatar,
+        { width: size, height: size, borderRadius: size / 2, backgroundColor: fill },
+      ]}
+    >
+      <Text style={[styles.avatarText, { fontSize: size * 0.38, color: onColor(fill) }]}>
+        {initialsFor(member.displayName)}
+      </Text>
+    </View>
+  );
+}
+
+// Shared shell for every tile in the mosaic: the fill, the radius, the press
+// target, and the arrow that marks a tile as a way through to its tab. Each
+// tile supplies its own body, which is the point of the layout — they carry
+// genuinely different kinds of information rather than four copies of the same
+// stat block.
+function BentoCard({
+  tone,
+  height,
+  flex,
+  onPress,
+  children,
+  styles,
+}: {
+  // Fills the whole tile. Text on top takes whichever of black/white
+  // contrasts better, so a tone is free to be as light or dark as it likes.
   tone: string;
-  // Nothing overlaps the last card, so its extra height is dead space at the
-  // bottom rather than the covered band the others give up. It's cut down to
-  // the exposed height instead — which also puts the arrow, fixed at the
-  // centre of that band, in the middle of this card rather than above it.
-  last?: boolean;
-  // Optional: the bills card is read off the calendar sitting directly above
-  // it on this same screen, so there is nowhere for it to send you. It loses
-  // the arrow with the press rather than pointing at nothing.
+  height?: number;
+  flex?: number;
   onPress?: () => void;
-  styles: ReturnType<typeof createStyles>;
+  children: (fg: string) => React.ReactNode;
+  styles: Styles;
 }) {
   const fg = onColor(tone);
-
   return (
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={[
-        styles.stackCard,
-        {
-          backgroundColor: tone,
-          height: last ? EXPOSED_HEIGHT : CARD_HEIGHT,
-          // First card sits flush; the rest overlap the card above.
-          marginTop: index === 0 ? 0 : EXPOSED_HEIGHT - CARD_HEIGHT,
-          // Later siblings already paint on top on iOS; this makes the order
-          // explicit and holds on Android too.
-          zIndex: index,
-        },
+      style={({ pressed }) => [
+        styles.bentoCard,
+        { backgroundColor: tone, height, flex, opacity: pressed ? 0.92 : 1 },
       ]}
     >
-      <View style={styles.stackHeader}>
-        {/* The chip is the foreground colour faded back, so it reads as a
-            recess in the block rather than a second colour on top of it. */}
-        <View style={[styles.stackIcon, { backgroundColor: withAlpha(fg, 0.18) }]}>{icon(fg)}</View>
-        <Text style={[styles.stackLabel, { color: fg }]}>{label}</Text>
-      </View>
-      <Text style={[styles.stackStat, { color: fg }]}>{stat}</Text>
-      <Text style={[styles.stackCaption, { color: withAlpha(fg, 0.72) }]}>{caption}</Text>
-
-      {/* The same box the chore cards carry, with an arrow where their tick
-          goes: this one completes nothing, it opens the tab the card is
-          summarising. Deliberately not a Pressable of its own — the whole card
-          already navigates there, and a second target would only give the same
-          journey two hit areas. */}
+      {children(fg)}
       {onPress && (
-        <View style={[styles.stackGo, { borderColor: fg }]}>
-          <Ionicons name="arrow-forward" size={14} color={fg} />
+        <View style={[styles.bentoGo, { backgroundColor: withAlpha(fg, 0.16) }]}>
+          <Ionicons name="arrow-forward" size={13} color={fg} />
         </View>
       )}
     </Pressable>
@@ -368,6 +393,39 @@ export default function HomeScreen() {
     return { total, done };
   }, [chores, completions, userFlat, currentUser]);
 
+  // The first chore still outstanding today, and the flatmate it falls to.
+  // Drives the attribution row at the foot of the chores tile — the tile says
+  // *who* is up, not just how many are left, which is the thing you'd actually
+  // want to know at a glance.
+  const nextChore = useMemo(() => {
+    if (!userFlat) return null;
+    const now = new Date();
+    const memberIds = userFlat.members.map((m) => m.userId);
+    const assignedTo = assignChores(chores, memberIds, now);
+    const doneKeys = new Set(completions.filter((c) => c.done).map((c) => `${c.choreId}:${c.week}`));
+
+    for (const chore of chores) {
+      const userId = assignedTo.get(chore.id);
+      if (!userId) continue;
+      if (doneKeys.has(`${chore.id}:${getPeriodIndex(chore.frequency, now)}`)) continue;
+      const member = userFlat.members.find((m) => m.userId === userId);
+      if (member) return { chore, member };
+    }
+    return null;
+  }, [chores, completions, userFlat]);
+
+  // Distinct flatmates who've put something on the list, as a face pile. Caps
+  // at four: past that the discs stop being individually readable and the
+  // overflow count says it better.
+  const listFaces = useMemo(() => {
+    if (!userFlat) return { faces: [], extra: 0 };
+    const ids = Array.from(new Set(items.map((i) => i.addedByUserId)));
+    const members = ids
+      .map((id) => userFlat.members.find((m) => m.userId === id))
+      .filter((m): m is NonNullable<typeof m> => Boolean(m));
+    return { faces: members.slice(0, 4), extra: Math.max(0, members.length - 4) };
+  }, [items, userFlat]);
+
   const moneySummary = useMemo(() => {
     if (!currentUser) return { owe: 0, owed: 0 };
     const owe = balances.filter((b) => b.userId === currentUser.id).reduce((sum, b) => sum + b.amountCents, 0);
@@ -471,8 +529,26 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.container, { paddingTop: insets.top + 16 }]}>
-        <View onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}>
+      <View style={[styles.container, { paddingTop: insets.top + 6 }]}>
+        {/* The dashboard scrolls. The calendar's height is dynamic (it grows
+            with the month's week count), so a fixed block would run off the
+            bottom of a shorter phone — which is exactly what it did. The
+            calendar's own PanResponder only claims vertical drags that start
+            on it, so month-turning still wins there and the page scrolls
+            everywhere else. */}
+        <Animated.ScrollView
+          style={{ flex: 1 }}
+          onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
+          // minHeight guarantees scroll range even when the content is shorter
+          // than the viewport, which is what the settings button rides on.
+          contentContainerStyle={{
+            paddingBottom: tabBarSpace + 12,
+            minHeight: viewportHeight + SETTINGS_REVEAL,
+          }}
+          onScroll={onScroll}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+        >
           <Text
             style={styles.greeting}
             numberOfLines={1}
@@ -509,58 +585,172 @@ export default function HomeScreen() {
             </RevealTile>
           </View>
 
-          <View style={[styles.stack, { marginBottom: tabBarSpace + 12 }]}>
-            <StackCard
-              index={0}
-              icon={(color) => <Ionicons name={billIcon as never} size={15} color={color} />}
-              label="Bills due"
-              stat={billStat}
-              caption={billCaption}
-              tone={CAL_PLATE}
-              styles={styles}
-            />
-            <StackCard
-              index={1}
-              icon={(color) => <MaterialCommunityIcons name="broom" size={15} color={color} />}
-              label="Chores"
-              stat={choreStat}
-              caption={choreCaption}
-              tone={CARD_TONES.lime}
-              onPress={() => navigation.navigate("House")}
-              styles={styles}
-            />
-            <StackCard
-              index={2}
-              icon={(color) => <Ionicons name="cash-outline" size={15} color={color} />}
-              label="Balance"
-              stat={balanceStat}
-              caption={balanceCaption}
-              tone={CARD_TONES.indigo}
-              onPress={() => navigation.navigate("Splitwise")}
-              styles={styles}
-            />
-            <StackCard
-              index={3}
-              icon={(color) => <Ionicons name="cart-outline" size={15} color={color} />}
-              label="Shopping list"
-              stat={String(items.length)}
-              caption={shoppingCaption}
-              tone={CARD_TONES.lilac}
-              last
-              onPress={() => navigation.navigate("Shopping")}
-              styles={styles}
-            />
-          </View>
-        </View>
+          {/* Tab-bar clearance is the content container's paddingBottom now,
+              so the tiles only carry their own spacing. */}
+          <View style={styles.bento}>
+            <View style={styles.bentoRow}>
+              {/* Left: the tall block. Chores are the thing you act on, so they
+                  get the most room — headline, the fraction as the value, and
+                  an attribution row naming whose turn it is. */}
+              <RevealTile delay={60} style={styles.bentoColLeft}>
+                  <BentoCard
+                    tone={CARD_TONES.lime}
+                    height={BENTO_TALL}
+                    onPress={() => navigation.navigate("House")}
+                    styles={styles}
+                  >
+                    {(fg) => (
+                      <>
+                        <Pill
+                          text={myChoreStats.total === 0 ? "Free" : choresLeft === 0 ? "Done" : "This week"}
+                          fg={fg}
+                          styles={styles}
+                        />
+                        <Text style={[styles.bentoTitle, { color: fg }]}>Chores</Text>
+                        <Text style={[styles.bentoValue, { color: fg }]}>{choreStat}</Text>
+                        <Text style={[styles.bentoLine, { color: withAlpha(fg, 0.7) }]}>{choreCaption}</Text>
 
-        <Animated.ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: tabBarSpace, minHeight: viewportHeight + SETTINGS_REVEAL }}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-        >
-          {/* A spacer to give the page scroll range so the settings button can reveal */}
-          <View style={{ height: viewportHeight / 2 }} />
+                        <View style={styles.bentoSpacer} />
+
+                        {/* The reference's trainer row: a face, a role, a name.
+                            Here it's whose turn the next outstanding chore is. */}
+                        {nextChore ? (
+                          <View style={styles.attribution}>
+                            <Avatar
+                              member={nextChore.member}
+                              size={FACE_LARGE}
+                              fg={fg}
+                              styles={styles}
+                            />
+                            <View style={styles.attributionText}>
+                              <Text style={[styles.attributionRole, { color: withAlpha(fg, 0.65) }]}>
+                                Up next
+                              </Text>
+                              <Text style={[styles.attributionName, { color: fg }]} numberOfLines={1}>
+                                {nextChore.member.displayName.split(/\s+/)[0]} · {nextChore.chore.name}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          <View style={styles.attribution}>
+                            <View style={[styles.tickBadge, { backgroundColor: withAlpha(fg, 0.16) }]}>
+                              <Ionicons name="checkmark" size={16} color={fg} />
+                            </View>
+                            <Text style={[styles.attributionName, { color: fg }]}>Nothing outstanding</Text>
+                          </View>
+                        )}
+                      </>
+                    )}
+                  </BentoCard>
+              </RevealTile>
+
+              {/* Right: two shorter tiles. Bills is dark so the column reads as
+                  a different weight from the block beside it. */}
+              <View style={styles.bentoColRight}>
+                <RevealTile delay={130}>
+                  <BentoCard tone={CAL_PLATE} height={BENTO_TOP} styles={styles}>
+                    {(fg) => (
+                      <>
+                        <View style={styles.bentoTopRow}>
+                          <Pill text="Bills" fg={fg} styles={styles} />
+                          <Ionicons name={billIcon as never} size={16} color={withAlpha(fg, 0.6)} />
+                        </View>
+                        <Text style={[styles.bentoValueSm, { color: fg }]}>{billStat}</Text>
+                        <Text
+                          style={[styles.bentoLine, { color: withAlpha(fg, 0.7) }]}
+                          numberOfLines={2}
+                        >
+                          {billCaption}
+                        </Text>
+                      </>
+                    )}
+                  </BentoCard>
+                </RevealTile>
+
+                <RevealTile delay={200}>
+                  <BentoCard
+                    tone={CARD_TONES.indigo}
+                    height={BENTO_BOTTOM}
+                    onPress={() => navigation.navigate("Splitwise")}
+                    styles={styles}
+                  >
+                    {(fg) => (
+                      <>
+                        <Pill
+                          text={moneySummary.owe > 0 ? "You owe" : moneySummary.owed > 0 ? "Owed" : "Settled"}
+                          fg={fg}
+                          styles={styles}
+                        />
+                        {/* adjustsFontSizeToFit is the belt to the step-down's
+                            braces: a four-figure balance still shrinks to the
+                            line rather than truncating or wrapping. */}
+                        <Text
+                          style={[styles.bentoValueSm, { color: fg }]}
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.7}
+                        >
+                          {balanceStat}
+                        </Text>
+                        <Text
+                          style={[styles.bentoLine, styles.bentoLineInset, { color: withAlpha(fg, 0.7) }]}
+                          numberOfLines={1}
+                        >
+                          {balanceCaption}
+                        </Text>
+                      </>
+                    )}
+                  </BentoCard>
+                </RevealTile>
+              </View>
+            </View>
+
+            {/* Ruled off underneath, full width and short — the face pile is
+                the information here, the count is the caption. */}
+            <RevealTile delay={270}>
+              <BentoCard
+                tone={CARD_TONES.lilac}
+                height={BENTO_WIDE}
+                onPress={() => navigation.navigate("Shopping")}
+                styles={styles}
+              >
+                {(fg) => (
+                  <View style={styles.wideRow}>
+                    <View style={styles.wideText}>
+                      <Pill text="Shopping" fg={fg} styles={styles} />
+                      <Text style={[styles.wideValue, { color: fg }]}>
+                        {items.length}{" "}
+                        <Text style={[styles.bentoLine, { color: withAlpha(fg, 0.7) }]}>
+                          {shoppingCaption}
+                        </Text>
+                      </Text>
+                    </View>
+
+                    <View style={styles.facePile}>
+                      {listFaces.faces.map((member, i) => (
+                        <View
+                          key={member.userId}
+                          style={{ marginLeft: i === 0 ? 0 : -FACE_OVERLAP, zIndex: listFaces.faces.length - i }}
+                        >
+                          <Avatar member={member} size={FACE} fg={fg} styles={styles} />
+                        </View>
+                      ))}
+                      {listFaces.extra > 0 && (
+                        <View
+                          style={[
+                            styles.faceMore,
+                            { marginLeft: -FACE_OVERLAP, backgroundColor: withAlpha(fg, 0.2) },
+                          ]}
+                        >
+                          <Text style={[styles.faceMoreText, { color: fg }]}>+{listFaces.extra}</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+              </BentoCard>
+            </RevealTile>
+          </View>
         </Animated.ScrollView>
       </View>
       <SettingsButton style={settingsReveal} pointerEvents={settingsLive ? "auto" : "none"} />
@@ -575,9 +765,9 @@ function createStyles(colors: ThemeColors) {
   greeting: {
     fontFamily: fonts.regular,
     color: colors.text,
-    fontSize: 28,
+    fontSize: 26,
     letterSpacing: -0.7,
-    lineHeight: 34,
+    lineHeight: 31,
     paddingRight: 36,
   },
   greetingLead: { fontFamily: fonts.regular, color: colors.textMuted },
@@ -591,53 +781,86 @@ function createStyles(colors: ThemeColors) {
     marginTop: 10,
   },
   // Carries the gap the removed "The Lowdown" heading used to provide, so the
-  // tiles still read as their own section below the calendar.
-  calendarWrap: { marginTop: 28, marginBottom: 26 },
-  // Tab-bar clearance is the ScrollView's job now (useTabBarSpace); this is
-  // just breathing room under the last card.
-  stack: { marginBottom: 12 },
-  // The fill is the metric's own colour, set per card. No outline: the block
-  // is the colour now, and the shadow alone separates the overlapping layers.
-  // Height is set per card — the last one is cut to EXPOSED_HEIGHT.
-  stackCard: {
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    alignItems: "flex-start",
-    // Lifts each layer off the one it covers so the overlap reads as depth
-    // rather than as one flat shape.
+  // tiles still read as their own section below the calendar. Kept tight: the
+  // calendar is tall enough now that generous margins either side of it were
+  // pushing the mosaic off the bottom of the screen. The tiles still read as
+  // their own section — the calendar's dark plate is what separates them, not
+  // the whitespace.
+  calendarWrap: { marginTop: 10, marginBottom: 12 },
+  // Tab-bar clearance is the ScrollView's job (useTabBarSpace); this is just
+  // breathing room under the last tile.
+  bento: { marginBottom: 12, gap: BENTO_GAP },
+  bentoRow: { flexDirection: "row", gap: BENTO_GAP },
+  // The tall tile is a shade wider than the pair beside it, which is what
+  // stops the mosaic reading as two equal columns.
+  bentoColLeft: { flex: 1.15 },
+  bentoColRight: { flex: 1, gap: BENTO_GAP },
+
+  // Shared shell. No border — the fill is the shape. The shadow is much
+  // softer than the old stack's, which needed it to separate overlapping
+  // layers; these tiles are separated by the gaps instead.
+  bentoCard: {
+    borderRadius: 24,
+    padding: 14,
+    overflow: "hidden",
     shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: -3 },
-    elevation: 6,
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  stackHeader: { flexDirection: "row", alignItems: "center", gap: 9 },
-  stackIcon: {
+  bentoTopRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  // Sits in the corner opposite the pill. Filled rather than outlined, so it
+  // reads as a recess in the tile the way the pill does.
+  bentoGo: {
+    position: "absolute",
+    right: 12,
+    bottom: 12,
     width: 26,
     height: 26,
-    borderRadius: 9,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
   },
-  stackLabel: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 1.4, textTransform: "uppercase" },
-  // Centred in the band that stays visible under the next card's overlap
-  // rather than in the card's full height, so all three sit at the same height
-  // down the stack instead of the bottom one dropping below its neighbours.
-  // Border colour comes from the card's contrast-picked foreground.
-  stackGo: {
-    position: "absolute",
-    right: 16,
-    top: (EXPOSED_HEIGHT - GO_BOX) / 2,
-    width: GO_BOX,
-    height: GO_BOX,
-    borderWidth: 3,
-    borderRadius: 6,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stackStat: { fontFamily: fonts.display, fontSize: 22, marginTop: 3 },
-  // Colour is set per card from the contrast-picked foreground, faded back.
-  stackCaption: { fontFamily: fonts.regular, fontSize: 11, marginTop: 1 },
+
+  pill: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  pillText: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.6 },
+
+  // The headline on the tall tile only. The shorter tiles lead with their
+  // value instead — there isn't room for both, and the pill already names them.
+  //
+  // Every one of these carries an explicit lineHeight. Without it the line box
+  // is whatever the font reports, which differs per family and per platform —
+  // and these tiles are fixed-height, so an extra couple of points of leading
+  // is the difference between fitting and spilling out the bottom.
+  bentoTitle: { fontFamily: fonts.display, fontSize: 26, lineHeight: 31, letterSpacing: -0.6, marginTop: 10 },
+  bentoValue: { fontFamily: fonts.display, fontSize: 30, lineHeight: 34, letterSpacing: -0.8, marginTop: 8 },
+  // The compact tiles in the right column. A balance like "$1,234.56" is a lot
+  // of glyphs for half the width, so the value steps down rather than the
+  // caption below it getting pushed past the tile's edge.
+  bentoValueSm: { fontFamily: fonts.display, fontSize: 20, lineHeight: 24, letterSpacing: -0.4, marginTop: 6 },
+  bentoLine: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, marginTop: 3 },
+  // Keeps the caption clear of the arrow badge in the bottom-right corner.
+  bentoLineInset: { paddingRight: 30 },
+  // Pushes the attribution row to the foot of the tall tile regardless of how
+  // much copy sits above it.
+  bentoSpacer: { flex: 1, minHeight: 8 },
+
+  attribution: { flexDirection: "row", alignItems: "center", gap: 9 },
+  attributionText: { flex: 1 },
+  attributionRole: { fontFamily: fonts.regular, fontSize: 10, letterSpacing: 0.4 },
+  attributionName: { fontFamily: fonts.bold, fontSize: 13, marginTop: 1 },
+  tickBadge: { width: FACE_LARGE, height: FACE_LARGE, borderRadius: FACE_LARGE / 2, alignItems: "center", justifyContent: "center" },
+
+  avatar: { alignItems: "center", justifyContent: "center" },
+  avatarText: { fontFamily: fonts.bold },
+
+  wideRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  wideText: { flex: 1 },
+  wideValue: { fontFamily: fonts.display, fontSize: 22, letterSpacing: -0.5, marginTop: 6 },
+  // Right-padded to clear the arrow badge in the corner.
+  facePile: { flexDirection: "row", alignItems: "center", paddingRight: 30 },
+  faceMore: { width: FACE, height: FACE, borderRadius: FACE / 2, alignItems: "center", justifyContent: "center" },
+  faceMoreText: { fontFamily: fonts.bold, fontSize: 11 },
   });
 }

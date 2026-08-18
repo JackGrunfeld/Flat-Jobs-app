@@ -19,9 +19,14 @@ export type AppEnv = {
 
 export class HttpError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // Machine-readable discriminator for the cases where the client has to
+  // branch on *which* error it was rather than just show the message —
+  // currently only TERMS_REQUIRED, which drives the sign-up terms prompt.
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 

@@ -13,8 +13,13 @@
     }
   ],
   "vars": {
-    "GOOGLE_CLIENT_IDS": "",
-    "APPLE_CLIENT_IDS": "",
+    // Comma-separated allowed `aud` values. Add the Google *Web* client ID
+    // here (the one GoogleSignin is configured with) alongside the iOS client
+    // — the token's audience is whichever client initiated the request.
+    "GOOGLE_CLIENT_IDS": "404201488379-6jbt5kd9sj27q1qjjfcjpmb1miojos6j.apps.googleusercontent.com,404201488379-06qjpetsa0i8qsl7pqlogt50haqq7caq.apps.googleusercontent.com",
+    // Native Sign in with Apple sets `aud` to the app's bundle ID. A Services
+    // ID would be added here too if web sign-in is ever added.
+    "APPLE_CLIENT_IDS": "com.flatjobs.app",
     "CORS_ORIGIN": "*"
   }
 }

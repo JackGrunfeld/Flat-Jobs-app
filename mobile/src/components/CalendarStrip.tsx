@@ -52,31 +52,37 @@ import AnimatedAddAction from "./AnimatedAddAction";
 const COLUMNS = 7;
 // Each column is a flex cell, so the row always spans the track exactly; the
 // circle inside is sized off the measured width and clamped at both ends.
-// MAX_CIRCLE is the one that shapes the card: five rows of it plus the header
-// is the widget's whole depth, so keeping it small is what keeps the card
-// wider than it is deep rather than growing into a square block.
-const CELL_GAP = 2;
+// MAX_CIRCLE is the one that shapes the card: five or six rows of it, plus
+// ROW_GAP between them and the weekday header on top, is the widget's whole
+// depth. It's set near what a phone's width can actually give a column, so the
+// month fills the card rather than sitting as a strip in the top of it — the
+// card is meant to read as a page of the calendar, not a summary of one.
+const CELL_GAP = 4;
 // Split out from CELL_GAP, which only ever meant horizontal breathing room in
 // the circle sizing above. This is the air between one week's circles and the
 // next's — multiplied by five or six rows, it's the cheapest depth on the card.
-const ROW_GAP = 1;
-const MIN_CIRCLE = 18;
-const MAX_CIRCLE = 23;
+const ROW_GAP = 6;
+const MIN_CIRCLE = 24;
+const MAX_CIRCLE = 34;
+// How much taller the card stands while a day's events are being listed. The
+// list is what the card is for in that state, so it gets the grid's height and
+// then some — the month underneath isn't being read at the time.
+const VIEW_EXTRA_HEIGHT = 72;
 // Fixed rather than content-sized on purpose: the block's width feeds the
 // track's width, which decides the row height, which is what sizes this
 // block's letters. Letting it size to its own text would close that loop and
 // let the layout oscillate. It doubles as the ceiling on letter size — a glyph
 // can't be wider than the column it stacks in.
-const DATE_BLOCK_WIDTH = 82;
+const DATE_BLOCK_WIDTH = 96;
 // Held clear at the block's left edge for the date (or the year, off-month),
 // which sits in the corner beside the first letter. The stack takes the rest
 // and is pushed right against the grid, so this is what sets the gap between
 // the corner and the letters: widen it and they drift right, away from the
 // date. The four digits of a year are what it has to be wide enough for, not
 // the two of a date — hence the smaller size on that one.
-const CORNER_SPACE = 24;
-const DATE_NUM_SIZE = 18;
-const YEAR_SIZE = 9;
+const CORNER_SPACE = 28;
+const DATE_NUM_SIZE = 22;
+const YEAR_SIZE = 11;
 // DM Sans Black, as fractions of the font size: how tall a capital actually
 // stands, and how wide the widest capital a short month can throw at us ("M")
 // runs. Letters are sized by cap height rather than by font size because an em
@@ -264,12 +270,17 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
     }
   };
 
-  const stableGridHeight = gridHeight > 0 ? gridHeight : 140;
+  const stableGridHeight = gridHeight > 0 ? gridHeight : 220;
+  // The day list doesn't have to stop where the month grid did — nothing is
+  // being laid over the grid, the card simply grows for as long as the list is
+  // up. Worth roughly two more events on screen before anything has to be
+  // scrolled for, which is most days.
+  const viewListHeight = (gridHeight > 0 ? gridHeight : 220) + VIEW_EXTRA_HEIGHT;
   const circle =
     trackWidth > 0
       ? Math.min(MAX_CIRCLE, Math.max(MIN_CIRCLE, trackWidth / COLUMNS - CELL_GAP))
       : MIN_CIRCLE;
-  const dayNumSize = Math.round(Math.min(13, Math.max(9, circle * 0.42)));
+  const dayNumSize = Math.round(Math.min(18, Math.max(12, circle * 0.44)));
 
   const viewedMonth = useMemo(() => addMonths(today, monthOffset), [today, monthOffset]);
   const isCurrentMonth = monthOffset === 0;
@@ -479,6 +490,18 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
   const [viewingISO, setViewingISO] = useState<string | null>(null);
   viewModeRef.current = viewMode;
 
+  // Press and hold a day to read it rather than tapping it and then tapping the
+  // banner: the grid is where the day is being looked at, so the gesture that
+  // opens its list belongs on the day itself. Empty days open too — the list
+  // saying nothing is on is a straighter answer than a cell that ignores the
+  // hold.
+  const openViewForDay = (iso: string) => {
+    setFocusedISO(iso);
+    setSelectedISO(eventsByDate.has(iso) ? iso : null);
+    setViewingISO(iso);
+    setViewMode(true);
+  };
+
   const openViewForBanner = () => {
     const iso = selectedISO ?? banner?.date ?? null;
     if (!iso) return;
@@ -528,8 +551,11 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
   // Opens on the day the user last tapped, else the day whose events are being
   // listed, else the month being viewed rather than always today — swiping to
   // October and hitting "+" almost always means adding something in October.
-  const openAddForm = () => {
-    const tapped = focusedISO ?? (viewMode ? viewingISO : null);
+  // `isoOverride` is for the "+" under the per-day list, where the day is not
+  // in question — it's the one whose events are on screen, whatever was last
+  // tapped elsewhere on the calendar.
+  const openAddForm = (isoOverride?: string | null) => {
+    const tapped = isoOverride ?? focusedISO ?? (viewMode ? viewingISO : null);
     const tappedDate = tapped ? fromISODate(tapped) : null;
     setDraftTitle("");
     setDraftDate(tappedDate ?? (isCurrentMonth ? today : viewedMonth));
@@ -599,12 +625,16 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
         return rowIds.has(parts[1]);
       });
 
-      // If we're viewing a specific day and it now has no remaining
-      // events, close the view so the banner/list updates to empty.
+      // If we're viewing a specific day and its events have just gone, close
+      // the view so the banner/list updates to empty. Only when the day had
+      // something on it to begin with: a day opened empty by a long press was
+      // never showing an event that could disappear, and closing it on the next
+      // refresh would snap the list shut under the user.
       if (viewingISO) {
+        const hadOnDay = groupEventsByDate(prev).get(viewingISO)?.length ?? 0;
         const remainingByDate = groupEventsByDate(filtered);
         const remainingOnDay = remainingByDate.get(viewingISO) ?? [];
-        if (remainingOnDay.length === 0) {
+        if (hadOnDay > 0 && remainingOnDay.length === 0) {
           setViewMode(false);
           setSelectedISO(null);
         }
@@ -814,14 +844,18 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
             {/* If in view mode, replace the month grid with a stacked list of
                 events for the chosen day. */}
             {live && viewMode && viewingISO ? (
-              <View style={[styles.viewList, { maxHeight: stableGridHeight || 200, height: stableGridHeight || 200 }]}> 
-                <View style={styles.viewHeader}>
-                  <Text style={styles.viewHeaderText}>Events</Text>
-                  <Pressable onPress={() => setViewMode(false)} hitSlop={8}>
-                    <Ionicons name="close" size={18} color={ON_DARK_MUTED} />
-                  </Pressable>
-                </View>
-                <ScrollView style={{ maxHeight: stableGridHeight || 200, flex: 1 }}>
+              <View style={[styles.viewList, { height: viewListHeight }]}>
+                {/* The list starts at the top of the card: the day it's about
+                    is already named by the date in the corner beside it and by
+                    the banner underneath, so a header here would only be
+                    repeating them — in the one place where the space is worth
+                    another event instead. The controls live along the bottom
+                    for the same reason, and land under the thumb rather than up
+                    in the far corner. */}
+                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                  {(eventsByDate.get(viewingISO) ?? []).length === 0 && (
+                    <Text style={styles.viewEmpty}>Nothing on this day</Text>
+                  )}
                   {(eventsByDate.get(viewingISO) ?? []).map((ev, idx) => {
                     const category = ev.category ? EVENT_CATEGORIES[ev.category] : null;
                     return (
@@ -852,6 +886,33 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                     );
                   })}
                 </ScrollView>
+                {/* Both controls ride along the bottom of the list: "+" adds to
+                    the day already being looked at, without closing the list to
+                    re-aim the calendar's own, and the day it's about is named on
+                    the left so the header the list used to carry isn't missed.
+                    Down here they're under the thumb, and the top of the card —
+                    the easiest place to read — is all events. */}
+                <View style={styles.viewFooter}>
+                  <Text style={styles.viewFooterDate} numberOfLines={1}>
+                    {formatDateLabel(fromISODate(viewingISO) ?? today)}
+                  </Text>
+                  <Pressable
+                    onPress={() => setViewMode(false)}
+                    style={styles.viewFooterButton}
+                    hitSlop={8}
+                    accessibilityLabel="Back to the month"
+                  >
+                    <Ionicons name="close" size={18} color={ON_DARK_MUTED} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => openAddForm(viewingISO)}
+                    style={[styles.viewFooterButton, styles.viewAddButton]}
+                    hitSlop={8}
+                    accessibilityLabel={`Add an event on ${formatDateLabel(fromISODate(viewingISO) ?? today)}`}
+                  >
+                    <Ionicons name="add" size={18} color={ON_DARK} />
+                  </Pressable>
+                </View>
               </View>
             ) : null}
           {/* Weekday header (S M T ...). Hidden in per-day view mode. */}
@@ -902,10 +963,15 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                   <Pressable
                     key={dayIndex}
                     onPress={() => onDayPress(iso)}
+                    // Only the live face is a real calendar — the incoming one
+                    // is mid-turn and must not take a gesture.
+                    onLongPress={live ? () => openViewForDay(iso) : undefined}
+                    delayLongPress={300}
                     accessibilityLabel={[
                       `${day.getDate()} ${monthLabel(viewedMonth)}`,
                       category ? `, ${category.label}` : hasEvent ? ", has events" : "",
                     ].join("")}
+                    accessibilityHint="Press and hold to see everything on this day"
                     style={styles.cell}
                   >
                     <View
@@ -1292,8 +1358,8 @@ function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     card: {
       backgroundColor: CAL_DARK,
-      borderRadius: 16,
-      padding: 10,
+      borderRadius: 18,
+      padding: 14,
       marginBottom: 10,
     },
     // The two boxes sit closer to each other than the pair does to whatever
@@ -1357,10 +1423,10 @@ function createStyles(colors: ThemeColors) {
     cell: { flex: 1, alignItems: "center", justifyContent: "center" },
     weekdayHead: {
       fontFamily: fonts.bold,
-      fontSize: 9,
+      fontSize: 12,
       letterSpacing: 1,
       color: ON_DARK_MUTED,
-      marginBottom: 2,
+      marginBottom: 6,
     },
     weekdayHeadToday: { color: CAL_RED },
     day: {
@@ -1371,27 +1437,53 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
     },
     dayNum: { fontFamily: fonts.bold, color: ON_DARK },
-    nextDay: { alignItems: "center", minWidth: 34 },
-    nextWeekday: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 1, color: ON_DARK_MUTED },
-    nextDayNum: { fontFamily: fonts.display, fontSize: 16, color: ON_DARK },
+    nextDay: { alignItems: "center", minWidth: 40 },
+    nextWeekday: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 1, color: ON_DARK_MUTED },
+    nextDayNum: { fontFamily: fonts.display, fontSize: 20, color: ON_DARK },
     nextIcon: {
-      width: 26,
-      height: 26,
-      borderRadius: 8,
+      width: 32,
+      height: 32,
+      borderRadius: 10,
       alignItems: "center",
       justifyContent: "center",
     },
     nextBody: { flex: 1 },
-    viewList: { padding: 8 },
-    viewHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    viewHeaderText: { color: ON_DARK, fontFamily: fonts.bold },
-    eventRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6, paddingHorizontal: 8, marginBottom: 6 },
-    eventAccent: { width: 6, height: 30, borderRadius: 3, marginRight: 8 },
+    // No top padding: the first event starts at the top edge of the card, level
+    // with the month letters beside it.
+    viewList: { paddingHorizontal: 8, paddingBottom: 2 },
+    viewEmpty: { color: ON_DARK_MUTED, fontFamily: fonts.regular, fontSize: 13, paddingVertical: 10 },
+    eventRow: { flexDirection: "row", alignItems: "center", paddingVertical: 8, paddingHorizontal: 8, marginBottom: 8 },
+    eventAccent: { width: 6, height: 36, borderRadius: 3, marginRight: 10 },
     eventLeft: { flex: 1 },
-    eventTitle: { color: ON_DARK, fontFamily: fonts.regular, fontSize: 13 },
-    eventWhen: { color: ON_DARK_PAST, fontSize: 11 },
+    eventTitle: { color: ON_DARK, fontFamily: fonts.regular, fontSize: 15 },
+    eventWhen: { color: ON_DARK_PAST, fontSize: 12, marginTop: 2 },
     eventActions: { flexDirection: "row" },
-    eventActionButton: { marginLeft: 8 },
+    eventActionButton: { marginLeft: 12 },
+    // Ruled off from the list so it doesn't read as another event row. Sits
+    // last in a column the height of the whole card, so it's pinned to the
+    // bottom edge and the scrolling list takes everything above it.
+    viewFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderTopWidth: 1,
+      borderTopColor: ON_DARK_LINE,
+      paddingTop: 6,
+      marginTop: 2,
+    },
+    // Takes the slack, which pushes both buttons to the right edge.
+    viewFooterDate: { flex: 1, fontFamily: fonts.bold, fontSize: 12, color: ON_DARK_MUTED },
+    viewFooterButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    viewAddButton: {
+      borderWidth: 1.5,
+      borderColor: ON_DARK_LINE,
+    },
     pickerLabel: {
       fontFamily: fonts.bold,
       fontSize: 9,
@@ -1416,9 +1508,9 @@ function createStyles(colors: ThemeColors) {
     // The repeat chips fill with the card's red, which is dark enough behind
     // this that the label has to flip rather than just brighten.
     chipTextActive: { color: ON_DARK },
-    nextTitle: { fontFamily: fonts.bold, fontSize: 13, color: ON_DARK },
-    nextWhen: { fontFamily: fonts.regular, fontSize: 11, color: ON_DARK_MUTED, marginTop: 2 },
-    empty: { fontFamily: fonts.regular, fontSize: 12, color: ON_DARK_MUTED },
+    nextTitle: { fontFamily: fonts.bold, fontSize: 15, color: ON_DARK },
+    nextWhen: { fontFamily: fonts.regular, fontSize: 12, color: ON_DARK_MUTED, marginTop: 3 },
+    empty: { fontFamily: fonts.regular, fontSize: 13, color: ON_DARK_MUTED },
     // A solid pastel disc rather than the soft tint used on light surfaces —
     // `accentSoft` is a wash of `accentInk`, which is deepened for light
     // backgrounds and disappears into this plate.

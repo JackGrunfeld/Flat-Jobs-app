@@ -51,6 +51,17 @@ export function relativeLuminance(hex: string): number {
 // (lighter + 0.05) / (darker + 0.05), and black's luminance is 0.
 export const contrastWithBlack = (hex: string): number => (relativeLuminance(hex) + 0.05) / 0.05;
 
+// Mainly for the transparent end of a fade-out gradient. "Transparent" has to
+// be *this colour* at zero alpha, not `rgba(0,0,0,0)` — gradients interpolate
+// the colour channels alongside the alpha, so fading from transparent black
+// to a light background greys out the middle of the ramp.
+export function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // Straight-line distance in RGB. Crude next to a proper perceptual metric, but
 // it only has to answer "are these two close enough to be confused with each
 // other", and for that it's honest enough.

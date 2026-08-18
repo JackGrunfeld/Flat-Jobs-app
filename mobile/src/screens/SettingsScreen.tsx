@@ -15,6 +15,7 @@ import { typeScale } from "../theme/typography";
 import { initialsFor } from "../utils/initials";
 import { MEMBER_PRESETS } from "../theme/pastels";
 import PastelColorWheel from "../components/PastelColorWheel";
+import TermsModal from "../components/TermsModal";
 
 type MenuKey = "account" | "flatmates" | "invite";
 
@@ -47,6 +48,7 @@ export default function SettingsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat, logout, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
   const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [termsVisible, setTermsVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
 
@@ -296,6 +298,13 @@ export default function SettingsScreen() {
         />
       </View>
 
+      {/* The terms have to stay reachable after sign-up, not just at the
+          moment of acceptance — read-only here, so there's no second gate. */}
+      <Pressable style={styles.settingRow} onPress={() => setTermsVisible(true)}>
+        <Text style={styles.settingLabel}>Terms & Conditions</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
       <Pressable style={styles.dangerButton} onPress={confirmLeaveFlat}>
         <Text style={styles.dangerButtonText}>Leave flat</Text>
       </Pressable>
@@ -303,6 +312,13 @@ export default function SettingsScreen() {
       <Pressable style={styles.signOutButton} onPress={() => logout()}>
         <Text style={styles.signOutText}>Sign out</Text>
       </Pressable>
+
+      <TermsModal
+        visible={termsVisible}
+        readOnly
+        onAccept={() => setTermsVisible(false)}
+        onClose={() => setTermsVisible(false)}
+      />
     </ScrollView>
   );
 }

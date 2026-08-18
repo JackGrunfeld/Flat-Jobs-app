@@ -9,7 +9,7 @@ import { DMSans_400Regular, DMSans_700Bold, DMSans_900Black } from "@expo-google
 import { AuthProvider } from "./src/context/AuthContext";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import RootNavigator from "./src/navigation/RootNavigator";
-import { GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID } from "./src/config/env";
+import { GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_SIGNIN_CONFIGURED } from "./src/config/env";
 
 // Foreground display config for local completion alerts (and any settlement
 // push that arrives while the app is open) — Expo suppresses foreground
@@ -23,7 +23,12 @@ Notifications.setNotificationHandler({
   }),
 });
 
-GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, iosClientId: GOOGLE_IOS_CLIENT_ID });
+// Skipped entirely when unconfigured — calling configure() with an empty
+// webClientId leaves the native module in a state that throws only later, at
+// the point of sign-in, with an error that doesn't name the real cause.
+if (GOOGLE_SIGNIN_CONFIGURED) {
+  GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, iosClientId: GOOGLE_IOS_CLIENT_ID });
+}
 
 // Everything below the provider, so the font-loading placeholder and the
 // status bar can both read the active theme. Status bar glyphs have to track

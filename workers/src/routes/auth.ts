@@ -22,7 +22,14 @@ type UserRow = {
   password_salt: string | null;
   password_iterations: number | null;
   birthday: string | null;
+  country: string | null;
+  terms_accepted_at: number | null;
+  terms_version: string | null;
 };
+
+// Bump when the terms materially change; `terms_version` on the row records
+// which revision each user actually agreed to.
+export const CURRENT_TERMS_VERSION = "1.0";
 
 // YYYY-MM-DD, and not in the future.
 function isValidBirthday(value: string): boolean {
@@ -30,6 +37,12 @@ function isValidBirthday(value: string): boolean {
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return false;
   return date.getTime() <= Date.now();
+}
+
+// ISO 3166-1 alpha-2. The client picks from a fixed list, so this only has to
+// reject obvious junk rather than validate against the full registry.
+function isValidCountry(value: string): boolean {
+  return /^[A-Z]{2}$/.test(value);
 }
 
 async function issueSession(db: D1Database, userId: string, jwtSecret: string) {
@@ -51,21 +64,34 @@ async function issueSession(db: D1Database, userId: string, jwtSecret: string) {
 }
 
 function userDto(row: UserRow) {
-  return { id: row.id, email: row.email, displayName: row.display_name, birthday: row.birthday };
+  return {
+    id: row.id,
+    email: row.email,
+    displayName: row.display_name,
+    birthday: row.birthday,
+    country: row.country,
+    termsAcceptedAt: row.terms_accepted_at,
+    // The client routes to the profile step until every field the onboarding
+    // form collects is on file. Derived here rather than in the app so the
+    // rule lives in one place as fields get added.
+    profileComplete: Boolean(row.display_name?.trim() && row.birthday && row.country),
+  };
 }
 
 auth.post("/signup", async (c) => {
-  const { email, password, displayName, birthday } = await c.req.json<{
+  // displayName/birthday are no longer collected here — they're part of the
+  // post-signup profile step (along with country), so the sign-up form itself
+  // is just credentials plus the terms checkbox.
+  const { email, password, acceptedTerms } = await c.req.json<{
     email?: string;
     password?: string;
-    displayName?: string;
-    birthday?: string;
+    acceptedTerms?: boolean;
   }>();
-  if (!email || !password || !displayName || !birthday) {
-    throw new HttpError(400, "email, password, displayName, and birthday are required");
+  if (!email || !password) {
+    throw new HttpError(400, "email and password are required");
   }
-  if (!isValidBirthday(birthday)) {
-    throw new HttpError(400, "birthday must be a valid past date (YYYY-MM-DD)");
+  if (acceptedTerms !== true) {
+    throw new HttpError(403, "You must accept the Terms & Conditions to create an account", "TERMS_REQUIRED");
   }
 
   const normalizedEmail = email.toLowerCase().trim();
@@ -76,16 +102,29 @@ auth.post("/signup", async (c) => {
 
   const { hash, salt, iterations } = await hashPassword(password);
   const userId = newId();
+  // Placeholder display name from the email local part: the profile step
+  // overwrites it before the user reaches the app, but the column is NOT NULL
+  // and a flat invite could reference the row in between.
+  const placeholderName = normalizedEmail.split("@")[0];
+  const acceptedAt = now();
   await c.env.DB.prepare(
-    `INSERT INTO users (id, email, display_name, password_hash, password_salt, password_iterations, birthday, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO users (id, email, display_name, password_hash, password_salt, password_iterations, created_at, terms_accepted_at, terms_version)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
-    .bind(userId, normalizedEmail, displayName.trim(), hash, salt, iterations, birthday, now())
+    .bind(userId, normalizedEmail, placeholderName, hash, salt, iterations, now(), acceptedAt, CURRENT_TERMS_VERSION)
     .run();
 
   const session = await issueSession(c.env.DB, userId, c.env.JWT_SECRET);
   return c.json({
-    user: { id: userId, email: normalizedEmail, displayName: displayName.trim(), birthday },
+    user: {
+      id: userId,
+      email: normalizedEmail,
+      displayName: placeholderName,
+      birthday: null,
+      country: null,
+      termsAcceptedAt: acceptedAt,
+      profileComplete: false,
+    },
     ...session,
   });
 });
@@ -111,12 +150,18 @@ auth.post("/login", async (c) => {
 // Shared upsert for both OAuth providers: find-or-create a user by
 // (provider, provider_sub), falling back to matching an existing account by
 // email so a user who signed up with email/password can also link Google/Apple.
+// `acceptedTerms` only matters on the branch that creates a brand new account.
+// The client can't know in advance whether a given Google/Apple identity is a
+// returning user or a first-time signup, so it optimistically calls without
+// it; a TERMS_REQUIRED response tells it to show the terms and retry. That way
+// existing users are never re-prompted and new ones can't slip through.
 async function upsertOAuthUser(
   db: D1Database,
   provider: "google" | "apple",
   providerSub: string,
   email: string | null,
   displayName: string | null,
+  acceptedTerms: boolean,
 ): Promise<UserRow> {
   const linked = await db
     .prepare(
@@ -137,19 +182,34 @@ async function upsertOAuthUser(
     if (!email) {
       throw new HttpError(400, `${provider} did not provide an email and no existing account was found`);
     }
+    if (!acceptedTerms) {
+      throw new HttpError(
+        403,
+        "You must accept the Terms & Conditions to create an account",
+        "TERMS_REQUIRED",
+      );
+    }
     const userId = newId();
+    const resolvedName = displayName || email.split("@")[0];
+    const acceptedAt = now();
     await db
-      .prepare("INSERT INTO users (id, email, display_name, created_at) VALUES (?, ?, ?, ?)")
-      .bind(userId, email, displayName || email.split("@")[0], now())
+      .prepare(
+        `INSERT INTO users (id, email, display_name, created_at, terms_accepted_at, terms_version)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(userId, email, resolvedName, now(), acceptedAt, CURRENT_TERMS_VERSION)
       .run();
     user = {
       id: userId,
       email,
-      display_name: displayName || email.split("@")[0],
+      display_name: resolvedName,
       password_hash: null,
       password_salt: null,
       password_iterations: null,
       birthday: null,
+      country: null,
+      terms_accepted_at: acceptedAt,
+      terms_version: CURRENT_TERMS_VERSION,
     };
   }
 
@@ -164,11 +224,18 @@ async function upsertOAuthUser(
 }
 
 auth.post("/google", async (c) => {
-  const { idToken } = await c.req.json<{ idToken?: string }>();
+  const { idToken, acceptedTerms } = await c.req.json<{ idToken?: string; acceptedTerms?: boolean }>();
   if (!idToken) throw new HttpError(400, "idToken is required");
 
   const identity = await verifyGoogleIdToken(idToken, c.env.GOOGLE_CLIENT_IDS);
-  const user = await upsertOAuthUser(c.env.DB, "google", identity.sub, identity.email, identity.name);
+  const user = await upsertOAuthUser(
+    c.env.DB,
+    "google",
+    identity.sub,
+    identity.email,
+    identity.name,
+    acceptedTerms === true,
+  );
   const session = await issueSession(c.env.DB, user.id, c.env.JWT_SECRET);
   return c.json({ user: userDto(user), ...session });
 });
@@ -176,16 +243,24 @@ auth.post("/google", async (c) => {
 auth.post("/apple", async (c) => {
   // email/fullName are only sent by the client on the FIRST authorization —
   // Apple never returns them again on subsequent sign-ins for the same user.
-  const { identityToken, email, fullName } = await c.req.json<{
+  const { identityToken, email, fullName, acceptedTerms } = await c.req.json<{
     identityToken?: string;
     email?: string;
     fullName?: string;
+    acceptedTerms?: boolean;
   }>();
   if (!identityToken) throw new HttpError(400, "identityToken is required");
 
   const identity = await verifyAppleIdentityToken(identityToken, c.env.APPLE_CLIENT_IDS);
   const resolvedEmail = identity.email || email || null;
-  const user = await upsertOAuthUser(c.env.DB, "apple", identity.sub, resolvedEmail, fullName || null);
+  const user = await upsertOAuthUser(
+    c.env.DB,
+    "apple",
+    identity.sub,
+    resolvedEmail,
+    fullName || null,
+    acceptedTerms === true,
+  );
   const session = await issueSession(c.env.DB, user.id, c.env.JWT_SECRET);
   return c.json({ user: userDto(user), ...session });
 });
@@ -232,15 +307,47 @@ auth.get("/me", requireAuth, async (c) => {
   return c.json({ user: userDto(row) });
 });
 
+// Partial update: the profile-setup step sends all three at once, while the
+// settings screen still sends displayName alone. Any omitted field is left as
+// it is, so the two callers can share the endpoint.
 auth.patch("/me", requireAuth, async (c) => {
-  const { displayName } = await c.req.json<{ displayName?: string }>();
-  if (!displayName || !displayName.trim()) {
-    throw new HttpError(400, "displayName is required");
+  const { displayName, birthday, country } = await c.req.json<{
+    displayName?: string;
+    birthday?: string;
+    country?: string;
+  }>();
+
+  const updates: string[] = [];
+  const values: (string | number)[] = [];
+
+  if (displayName !== undefined) {
+    if (!displayName.trim()) throw new HttpError(400, "displayName cannot be empty");
+    updates.push("display_name = ?");
+    values.push(displayName.trim());
+  }
+  if (birthday !== undefined) {
+    if (!isValidBirthday(birthday)) {
+      throw new HttpError(400, "birthday must be a valid past date (YYYY-MM-DD)");
+    }
+    updates.push("birthday = ?");
+    values.push(birthday);
+  }
+  if (country !== undefined) {
+    const normalizedCountry = country.trim().toUpperCase();
+    if (!isValidCountry(normalizedCountry)) {
+      throw new HttpError(400, "country must be a 2-letter ISO 3166-1 code");
+    }
+    updates.push("country = ?");
+    values.push(normalizedCountry);
+  }
+
+  if (updates.length === 0) {
+    throw new HttpError(400, "At least one of displayName, birthday, or country is required");
   }
 
   const userId = c.get("userId");
-  await c.env.DB.prepare("UPDATE users SET display_name = ? WHERE id = ?")
-    .bind(displayName.trim(), userId)
+  await c.env.DB.prepare(`UPDATE users SET ${updates.join(", ")} WHERE id = ?`)
+    .bind(...values, userId)
     .run();
 
   const row = await c.env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first<UserRow>();

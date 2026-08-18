@@ -205,11 +205,6 @@ function createStyles(colors: ThemeColors) {
     borderRadius: 16,
     padding: 12,
     gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
   },
   avatar: {
     width: 40,

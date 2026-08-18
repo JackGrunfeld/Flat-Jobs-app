@@ -10,6 +10,7 @@ import choresRoutes from "./routes/chores";
 import completionsRoutes from "./routes/completions";
 import shoppingRoutes from "./routes/shopping";
 import shoppingListItemsRoutes from "./routes/shoppingListItems";
+import shoppingListsRoutes from "./routes/shoppingLists";
 import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
 import eventsRoutes from "./routes/events";
@@ -27,7 +28,10 @@ app.use(
 
 app.onError((err, c) => {
   if (err instanceof HttpError) {
-    return c.json({ error: err.message }, err.status as 400 | 401 | 403 | 404 | 409);
+    return c.json(
+      { error: err.message, ...(err.code ? { code: err.code } : {}) },
+      err.status as 400 | 401 | 403 | 404 | 409,
+    );
   }
   console.error("[unhandled]", err);
   return c.json({ error: "Internal server error" }, 500);
@@ -44,6 +48,7 @@ app.route("/flats/:flatId/chores", choresRoutes);
 app.route("/flats/:flatId/completions", completionsRoutes);
 app.route("/flats/:flatId/shopping-items", shoppingRoutes);
 app.route("/flats/:flatId/shopping-list-items", shoppingListItemsRoutes);
+app.route("/flats/:flatId/shopping-lists", shoppingListsRoutes);
 app.route("/flats/:flatId/settlements", settlementsRoutes);
 app.route("/flats/:flatId/events", eventsRoutes);
 

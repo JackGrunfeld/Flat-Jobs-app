@@ -3,6 +3,14 @@ export type User = {
   email: string;
   displayName: string;
   birthday: string | null;
+  // ISO 3166-1 alpha-2, collected on the profile-setup step.
+  country: string | null;
+  // Epoch ms the Terms & Conditions were accepted, set at account creation.
+  termsAcceptedAt: number | null;
+  // Server-derived: false until name, birthday, and country are all on file.
+  // RootNavigator routes to ProfileSetupScreen while this is false, which is
+  // what catches OAuth signups and accounts created before the step existed.
+  profileComplete: boolean;
 };
 
 export type FlatMember = {
@@ -113,10 +121,22 @@ export type ShoppingItem = {
   createdAt: number;
 };
 
+// A named category the shared checklist is split into. Every flat has at
+// least one (the auto-created "Shopping"); `position` is the drag-chosen
+// order of the chips on ShoppingScreen, not anything derived.
+export type ShoppingList = {
+  id: string;
+  name: string;
+  position: number;
+  createdAt: number;
+};
+
 // The plain shared "need to buy this" checklist — no cost, no split.
 export type ShoppingListItem = {
   id: string;
   name: string;
+  /** The ShoppingList this sits under. Null only for pre-categories rows. */
+  listId: string | null;
   addedByUserId: string;
   purchased: boolean;
   createdAt: number;

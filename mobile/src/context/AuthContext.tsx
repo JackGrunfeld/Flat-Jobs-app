@@ -10,14 +10,20 @@ type AuthContextValue = {
   currentUser: User | null;
   userFlat: Flat | null;
   authLoading: boolean;
-  signup: (name: string, email: string, password: string, birthday: string) => Promise<void>;
+  signup: (email: string, password: string, acceptedTerms: boolean) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithApple: (identityToken: string, email?: string | null, fullName?: string | null) => Promise<void>;
+  loginWithGoogle: (idToken: string, acceptedTerms?: boolean) => Promise<void>;
+  loginWithApple: (
+    identityToken: string,
+    email?: string | null,
+    fullName?: string | null,
+    acceptedTerms?: boolean,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   refreshFlat: () => Promise<Flat | null>;
   leaveFlat: () => Promise<void>;
   updateDisplayName: (name: string) => Promise<void>;
+  updateProfile: (profile: { displayName: string; birthday: string; country: string }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,8 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     registerForPushNotificationsAsync().catch(() => {});
   };
 
-  const signup = async (name: string, email: string, password: string, birthday: string) => {
-    const session = await authService.signup(email, password, name, birthday);
+  const signup = async (email: string, password: string, acceptedTerms: boolean) => {
+    const session = await authService.signup(email, password, acceptedTerms);
     await establishSession(session);
     // Best-effort: pick up a pending invite immediately. FlatSetupScreen
     // handles the retry-poll for the case where the invite hasn't propagated
@@ -88,13 +94,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await establishSession(session);
   };
 
-  const loginWithGoogle = async (idToken: string) => {
-    const session = await authService.loginWithGoogle(idToken);
+  const loginWithGoogle = async (idToken: string, acceptedTerms = false) => {
+    const session = await authService.loginWithGoogle(idToken, acceptedTerms);
     await establishSession(session);
   };
 
-  const loginWithApple = async (identityToken: string, email?: string | null, fullName?: string | null) => {
-    const session = await authService.loginWithApple(identityToken, email, fullName);
+  const loginWithApple = async (
+    identityToken: string,
+    email?: string | null,
+    fullName?: string | null,
+    acceptedTerms = false,
+  ) => {
+    const session = await authService.loginWithApple(identityToken, email, fullName, acceptedTerms);
     await establishSession(session);
   };
 
@@ -122,6 +133,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshFlat();
   };
 
+  // Written by ProfileSetupScreen. Setting currentUser to the returned row is
+  // what flips `profileComplete` and lets RootNavigator move past the step, so
+  // this must use the server's copy rather than the local form values.
+  const updateProfile = async (profile: { displayName: string; birthday: string; country: string }) => {
+    const { user } = await authService.updateProfile(profile);
+    setCurrentUser(user);
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -136,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshFlat,
         leaveFlat,
         updateDisplayName,
+        updateProfile,
       }}
     >
       {children}

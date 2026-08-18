@@ -9,10 +9,16 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.flatjobs.app"
+      "bundleIdentifier": "com.flatjobs.app",
+      "buildNumber": "1",
+      "usesAppleSignIn": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.flatjobs.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -33,10 +39,23 @@
         }
       ],
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-apple-authentication",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#E6F4FE"
+        }
+      ]
     ],
     "extra": {
-      "apiBaseUrl": "https://flat-jobs-api.grunfeldjack.workers.dev"
+      "apiBaseUrl": "https://flat-jobs-api.grunfeldjack.workers.dev",
+      "googleIosClientId": "404201488379-06qjpetsa0i8qsl7pqlogt50haqq7caq.apps.googleusercontent.com",
+      "googleWebClientId": "404201488379-6jbt5kd9sj27q1qjjfcjpmb1miojos6j.apps.googleusercontent.com"
     }
   }
 }

@@ -7,13 +7,15 @@ import { useAuth } from "../context/AuthContext";
 import * as shoppingListService from "../services/shoppingListService";
 import ShoppingItemCard from "../components/ShoppingItemCard";
 import AddShoppingItemModal from "../components/AddShoppingItemModal";
+import ListCategoryBar from "../components/ListCategoryBar";
+import ListCategoryModal from "../components/ListCategoryModal";
 import SettingsButton from "../components/SettingsButton";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
-import type { FlatMember, ShoppingListItem } from "../types";
+import type { FlatMember, ShoppingList, ShoppingListItem } from "../types";
 
 // The shared checklist as a stack of cards (avatar of whoever added it, name,
 // tick box). Adding is driven by the tab bar's centre "+", which this screen
@@ -29,6 +31,14 @@ export default function ShoppingScreen() {
   const [listItems, setListItems] = useState<ShoppingListItem[]>([]);
   const [addVisible, setAddVisible] = useState(false);
   const [openItemId, setOpenItemId] = useState<string | null>(null);
+  // The checklist is split into named lists; only the active one is shown.
+  const [lists, setLists] = useState<ShoppingList[]>([]);
+  const [activeListId, setActiveListId] = useState<string | null>(null);
+  const [listModalVisible, setListModalVisible] = useState(false);
+  // null while the modal is being used to create rather than edit.
+  const [editingList, setEditingList] = useState<ShoppingList | null>(null);
+
+  const activeList = useMemo(() => lists.find((l) => l.id === activeListId) ?? null, [lists, activeListId]);
 
   const memberById = useMemo(() => new Map((userFlat?.members ?? []).map((m) => [m.userId, m])), [userFlat]);
 
@@ -40,49 +50,107 @@ export default function ShoppingScreen() {
     [listItems],
   );
 
-  const load = useCallback(async () => {
+  // The lists come first: which one is active decides which items to ask
+  // for. The API guarantees at least one (it creates the default "Shopping"
+  // on read), so `lists[0]` is a safe landing spot.
+  const loadLists = useCallback(async () => {
     if (!userFlat) return;
-    const { items } = await shoppingListService.fetchShoppingListItems(userFlat.id);
-    setListItems(items);
+    const { lists: fetched } = await shoppingListService.fetchShoppingLists(userFlat.id);
+    setLists(fetched);
+    setActiveListId((prev) => (prev && fetched.some((l) => l.id === prev) ? prev : (fetched[0]?.id ?? null)));
   }, [userFlat]);
+
+  const loadItems = useCallback(async () => {
+    if (!userFlat || !activeListId) return;
+    const { items } = await shoppingListService.fetchShoppingListItems(userFlat.id, activeListId);
+    setListItems(items);
+  }, [userFlat, activeListId]);
 
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      loadLists();
+    }, [loadLists]),
   );
 
-  // Typed-out orange subtitle (same treatment as HomeScreen's nudge line) —
-  // retypes whenever the count changes, whether that's the initial load or
-  // an item being added/removed while the screen is open.
-  const itemsText = `There ${sortedItems.length === 1 ? "is" : "are"} ${sortedItems.length} item${sortedItems.length === 1 ? "" : "s"} in ${userFlat?.name ?? ""}'s list`;
-  const [visibleChars, setVisibleChars] = useState(0);
-  const [cursorOn, setCursorOn] = useState(true);
-
+  // Re-runs whenever the active list changes, so switching category swaps
+  // the items underneath without needing its own handler.
   useEffect(() => {
-    setVisibleChars(0);
-  }, [itemsText]);
+    loadItems();
+  }, [loadItems]);
 
-  useEffect(() => {
-    if (visibleChars >= itemsText.length) return;
-    const timer = setTimeout(() => setVisibleChars((c) => c + 1), 45);
-    return () => clearTimeout(timer);
-  }, [visibleChars, itemsText]);
-
-  useEffect(() => {
-    const blink = setInterval(() => setCursorOn((v) => !v), 500);
-    return () => clearInterval(blink);
-  }, []);
+  const itemsText = `There ${sortedItems.length === 1 ? "is" : "are"} ${sortedItems.length} item${sortedItems.length === 1 ? "" : "s"} in ${userFlat?.name ?? ""}'s ${activeList?.name ?? ""} list`;
 
   useRegisterAddAction("Shopping", () => setAddVisible(true));
 
   if (!userFlat) return null;
 
   const addListItem = async (name: string) => {
+    if (!activeListId) return;
     // A "duplicate" name resolves to the existing item (now with one more
     // vote) instead of a new row — merge it in place rather than prepending.
-    const { item } = await shoppingListService.addShoppingListItem(userFlat.id, { name });
+    const { item } = await shoppingListService.addShoppingListItem(userFlat.id, { name, listId: activeListId });
     setListItems((prev) => (prev.some((i) => i.id === item.id) ? prev.map((i) => (i.id === item.id ? item : i)) : [item, ...prev]));
+  };
+
+  const selectList = (listId: string) => {
+    if (listId === activeListId) return;
+    // Clear rather than leaving the old list's items showing while the new
+    // ones load — they'd read as belonging to the list just tapped.
+    setListItems([]);
+    setOpenItemId(null);
+    setActiveListId(listId);
+  };
+
+  const openNewListModal = () => {
+    setEditingList(null);
+    setListModalVisible(true);
+  };
+
+  const openEditListModal = (list: ShoppingList) => {
+    setEditingList(list);
+    setListModalVisible(true);
+  };
+
+  const submitList = async (name: string) => {
+    if (editingList) {
+      await shoppingListService.renameShoppingList(userFlat.id, editingList.id, name);
+      setLists((prev) => prev.map((l) => (l.id === editingList.id ? { ...l, name } : l)));
+      return;
+    }
+    // A new list lands on the end of the bar and becomes the active one, so
+    // whatever prompted creating it can be added straight away.
+    const { list } = await shoppingListService.createShoppingList(userFlat.id, name);
+    setLists((prev) => [...prev, list]);
+    selectList(list.id);
+  };
+
+  const removeList = async () => {
+    if (!editingList) return;
+    const removedId = editingList.id;
+    await shoppingListService.deleteShoppingList(userFlat.id, removedId);
+    const remaining = lists.filter((l) => l.id !== removedId);
+    setLists(remaining);
+    if (activeListId === removedId) {
+      setListItems([]);
+      setActiveListId(remaining[0]?.id ?? null);
+    }
+  };
+
+  const reorderLists = async (orderedIds: string[]) => {
+    const byId = new Map(lists.map((l) => [l.id, l]));
+    const reordered = orderedIds.flatMap((id, i) => {
+      const list = byId.get(id);
+      return list ? [{ ...list, position: i }] : [];
+    });
+    // Applied straight away — the bar has already animated the chips into
+    // this order, so waiting on the round-trip would snap them back.
+    setLists(reordered);
+    try {
+      await shoppingListService.reorderShoppingLists(userFlat.id, orderedIds);
+    } catch (err) {
+      console.warn("Failed to save list order", err);
+      loadLists();
+    }
   };
 
   const togglePurchased = async (item: ShoppingListItem) => {
@@ -124,14 +192,20 @@ export default function ShoppingScreen() {
       >
         <Text style={styles.pageTitle}>Shopping List</Text>
 
-        <Text style={styles.nudge}>
-          {itemsText.slice(0, visibleChars)}
-          <Text style={[styles.cursor, { opacity: cursorOn ? 1 : 0 }]}>▌</Text>
-        </Text>
+        <Text style={styles.nudge}>{itemsText}</Text>
 
         <View style={styles.divider} />
 
-        {sortedItems.length === 0 && <Text style={styles.emptyText}>Nothing on the list yet.</Text>}
+        <ListCategoryBar
+          lists={lists}
+          activeListId={activeListId}
+          onSelect={selectList}
+          onAdd={openNewListModal}
+          onEdit={openEditListModal}
+          onReorder={reorderLists}
+        />
+
+        {sortedItems.length === 0 && <Text style={styles.emptyText}>Nothing on this list yet.</Text>}
         {sortedItems.map((item) => (
           <ShoppingItemCard
             key={item.id}
@@ -150,6 +224,14 @@ export default function ShoppingScreen() {
       </ScrollView>
 
       <AddShoppingItemModal visible={addVisible} onClose={() => setAddVisible(false)} onAdd={addListItem} />
+      <ListCategoryModal
+        visible={listModalVisible}
+        list={editingList}
+        canDelete={lists.length > 1}
+        onClose={() => setListModalVisible(false)}
+        onSubmit={submitList}
+        onDelete={removeList}
+      />
       <SettingsButton />
     </View>
   );
@@ -172,7 +254,6 @@ function createStyles(colors: ThemeColors) {
     letterSpacing: 0.5,
     color: colors.accent,
   },
-  cursor: { fontFamily: fonts.bold, color: colors.accent },
   divider: {
     height: 1,
     backgroundColor: colors.border,

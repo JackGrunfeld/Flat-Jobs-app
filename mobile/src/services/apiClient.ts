@@ -3,9 +3,14 @@ import { getTokens, setAccessToken, clearTokens } from "../storage/secureStore";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // Machine-readable discriminator, set by the server for the cases a caller
+  // has to branch on rather than just display — currently TERMS_REQUIRED,
+  // which tells the sign-in screen to prompt for terms and retry.
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -64,8 +69,11 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error || "Request failed");
+    const body = (await res.json().catch(() => ({ error: res.statusText }))) as {
+      error?: string;
+      code?: string;
+    };
+    throw new ApiError(res.status, body.error || "Request failed", body.code);
   }
 
   if (res.status === 204) return undefined as T;
