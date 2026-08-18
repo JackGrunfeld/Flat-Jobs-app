@@ -54,7 +54,17 @@
     "extra": {
       "apiBaseUrl": "https://flat-jobs-api.grunfeldjack.workers.dev",
       "googleIosClientId": "404201488379-06qjpetsa0i8qsl7pqlogt50haqq7caq.apps.googleusercontent.com",
-      "googleWebClientId": "404201488379-6jbt5kd9sj27q1qjjfcjpmb1miojos6j.apps.googleusercontent.com"
-    }
+      "googleWebClientId": "404201488379-6jbt5kd9sj27q1qjjfcjpmb1miojos6j.apps.googleusercontent.com",
+      "eas": {
+        "projectId": "2b63c294-c181-4675-b26c-a99d96bf736b"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/2b63c294-c181-4675-b26c-a99d96bf736b"
+    },
+    "owner": "jackgrunfeld"
   }
 }
