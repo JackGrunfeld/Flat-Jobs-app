@@ -7,7 +7,7 @@
 // materially, so existing users get re-prompted.
 export const TERMS_VERSION = "1.0";
 
-export const TERMS_LAST_UPDATED = "17 August 2026";
+export const TERMS_LAST_UPDATED = "18 August 2026";
 
 export type TermsSection = { heading: string; body: string };
 
@@ -45,7 +45,7 @@ export const TERMS_SECTIONS: TermsSection[] = [
   {
     heading: "7. Your data",
     body:
-      "We store the information you give us and the activity you record in the app so that the app works. We do not sell your personal information, and we do not use it for advertising or tracking across other apps. You can ask us to delete your account and its data by contacting us at the address below.",
+      "We store the information you give us and the activity you record in the app so that the app works. We do not sell your personal information, and we do not use it for advertising or tracking across other apps. You can permanently delete your account and the data you have added at any time from Settings — this cannot be undone, and it removes the expenses, events and balances you were part of. Our Privacy Policy, linked from Settings, sets out in full what we collect and who processes it.",
   },
   {
     heading: "8. Availability",

@@ -7,7 +7,7 @@ import { AddActionProvider } from "./AddActionContext";
 // Settings used to be a 5th bottom tab; it's now reached via a small gear
 // button in the corner of each tab screen (see components/SettingsButton),
 // pushed on top of the tab bar rather than living inside it — freeing up
-// the tab slot for Splitwise.
+// the tab slot for Bills.
 export type RootStackParamList = {
   Tabs: undefined;
   Settings: undefined;

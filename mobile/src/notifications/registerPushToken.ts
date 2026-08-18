@@ -24,11 +24,24 @@ export async function registerForPushNotificationsAsync(): Promise<void> {
   }
   if (status !== "granted") return;
 
+  // Written into app.json by `eas init`. A standalone build can't mint an Expo
+  // push token without it, and `getExpoPushTokenAsync` throws rather than
+  // returning empty — which, called from the login path, would take sign-in
+  // down with it. Push is a feature; being able to log in is not, so a missing
+  // or rejected project ID is warned about and swallowed.
   const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
-  const { data: token } = await Notifications.getExpoPushTokenAsync(
-    projectId ? { projectId } : undefined,
-  );
+  if (!projectId) {
+    console.warn(
+      "[push] No EAS project ID (expo.extra.eas.projectId) — run `eas init`. Push notifications are off.",
+    );
+    return;
+  }
 
-  const platform = Platform.OS === "ios" ? "ios" : "android";
-  await registerPushToken(token, platform);
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
+    const platform = Platform.OS === "ios" ? "ios" : "android";
+    await registerPushToken(token, platform);
+  } catch (err) {
+    console.warn("[push] Could not register for push notifications:", err);
+  }
 }

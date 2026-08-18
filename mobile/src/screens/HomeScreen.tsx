@@ -7,8 +7,6 @@ import {
   Animated,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  type StyleProp,
-  type ViewStyle,
 } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
@@ -27,6 +25,7 @@ import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import SettingsButton from "../components/SettingsButton";
 import CalendarStrip from "../components/CalendarStrip";
+import RevealTile from "../components/RevealTile";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
 import { initialsFor } from "../utils/initials";
@@ -100,44 +99,6 @@ function periodForHour(hour: number) {
   if (hour < 12) return "morning";
   if (hour < 18) return "afternoon";
   return "evening";
-}
-
-// Staggered fade-up on mount/focus — each tile waits `delay` ms before
-// tweening in, so the dashboard reveals itself tile-by-tile instead of
-// popping in as a flat block.
-// `style` is what lets a tile also be a flex column of the mosaic — without it
-// the wrapper sizes to its content and collapses the row it sits in.
-function RevealTile({
-  delay,
-  style,
-  children,
-}: {
-  delay: number;
-  style?: StyleProp<ViewStyle>;
-  children: React.ReactNode;
-}) {
-  const anim = useRef(new Animated.Value(0)).current;
-
-  useFocusEffect(
-    useCallback(() => {
-      anim.setValue(0);
-      Animated.timing(anim, { toValue: 1, duration: 420, delay, useNativeDriver: true }).start();
-    }, [anim, delay]),
-  );
-
-  return (
-    <Animated.View
-      style={[
-        style,
-        {
-          opacity: anim,
-          transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
 }
 
 // The pill that heads each tile — a category/status word set in a rounded
@@ -254,6 +215,12 @@ export default function HomeScreen() {
   // Measured rather than taken from the window, so it's the scroll view's own
   // visible height whatever the tab bar and safe areas take out of it.
   const [viewportHeight, setViewportHeight] = useState(0);
+  // The calendar turns months on a vertical drag, and a native ScrollView goes
+  // on scrolling underneath a JS responder — so the page holds still for as
+  // long as the calendar owns the gesture. Only for that gesture's duration:
+  // the dashboard still scrolls from anywhere else, and from the calendar
+  // itself the moment the turn is let go of.
+  const [calendarSwiping, setCalendarSwiping] = useState(false);
 
   const onScroll = useMemo(
     () =>
@@ -547,6 +514,7 @@ export default function HomeScreen() {
           }}
           onScroll={onScroll}
           scrollEventThrottle={16}
+          scrollEnabled={!calendarSwiping}
           showsVerticalScrollIndicator={false}
         >
           <Text
@@ -581,6 +549,7 @@ export default function HomeScreen() {
                 rows={flatEvents}
                 onRefresh={loadEvents}
                 openAddSignal={openAddSignal}
+                onSwipeActive={setCalendarSwiping}
               />
             </RevealTile>
           </View>
@@ -652,7 +621,7 @@ export default function HomeScreen() {
                     {(fg) => (
                       <>
                         <View style={styles.bentoTopRow}>
-                          <Pill text="Bills" fg={fg} styles={styles} />
+                          <Pill text="Due soon" fg={fg} styles={styles} />
                           <Ionicons name={billIcon as never} size={16} color={withAlpha(fg, 0.6)} />
                         </View>
                         <Text style={[styles.bentoValueSm, { color: fg }]}>{billStat}</Text>
@@ -671,7 +640,7 @@ export default function HomeScreen() {
                   <BentoCard
                     tone={CARD_TONES.indigo}
                     height={BENTO_BOTTOM}
-                    onPress={() => navigation.navigate("Splitwise")}
+                    onPress={() => navigation.navigate("Bills")}
                     styles={styles}
                   >
                     {(fg) => (

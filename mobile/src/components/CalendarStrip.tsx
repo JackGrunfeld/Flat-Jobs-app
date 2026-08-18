@@ -5,6 +5,7 @@ import {
   StyleSheet,
   LayoutChangeEvent,
   PanResponder,
+  type PanResponderGestureState,
   Animated,
   Pressable,
   TextInput,
@@ -211,6 +212,11 @@ type Props = {
   openAddSignal?: number;
   // Optional callback to refresh server-backed rows (passed from HomeScreen)
   onRefresh?: () => Promise<void>;
+  // Fired the moment a month-turn drag is claimed, and again when it ends.
+  // The page this sits on is a ScrollView, and a native ScrollView keeps
+  // scrolling under a JS responder — so the only way the cube gets the whole
+  // of a vertical drag is for the page to stop scrolling for its duration.
+  onSwipeActive?: (active: boolean) => void;
 };
 
 // Local HH:MM off a Date the picker handed back — the stored value is
@@ -229,7 +235,7 @@ const formatDateLabel = (date: Date) =>
 // the colour of the flatmate whose event it is. Today is picked out in red
 // rather than by a circle, so a ring always means an event and never anything
 // else.
-export default function CalendarStrip({ events, today, monthRange, onCreateEvent, onUpdateEvent, onDeleteEvent, rows, openAddSignal, onRefresh }: Props) {
+export default function CalendarStrip({ events, today, monthRange, onCreateEvent, onUpdateEvent, onDeleteEvent, rows, openAddSignal, onRefresh, onSwipeActive }: Props) {
   const { colors, scheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -313,6 +319,10 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
   // gestures are the same drag — the month swipe has to stand down there or a
   // scroll through a long day flicks the calendar into another month.
   const viewModeRef = useRef(false);
+  // Held in a ref so the PanResponder — built once — always calls the latest
+  // callback without having to be rebuilt when the parent re-renders.
+  const swipeActiveRef = useRef(onSwipeActive);
+  swipeActiveRef.current = onSwipeActive;
 
   const step = (delta: number) => {
     setMonthOffset((current) => {
@@ -366,13 +376,29 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
       return { dir, progress: dir !== 0 && atEdge(dir) ? raw * EDGE_RESISTANCE : raw };
     };
 
+    // Only clearly-vertical drags, and only past a threshold — a tap or a
+    // diagonal flick still belongs to the ScrollView underneath.
+    const claims = (gesture: PanResponderGestureState) =>
+      !viewModeRef.current &&
+      Math.abs(gesture.dy) > CLAIM_THRESHOLD &&
+      Math.abs(gesture.dy) > Math.abs(gesture.dx);
+
+    // The page stops scrolling for as long as the cube has the gesture, and
+    // starts again the moment it lets go — including on a terminate, or the
+    // dashboard would be left frozen by an interrupted swipe.
+    const setActive = (active: boolean) => swipeActiveRef.current?.(active);
+
     return PanResponder.create({
-      // Only claims clearly-vertical drags, and only past a threshold — a
-      // tap or a diagonal flick still belongs to the ScrollView underneath.
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        !viewModeRef.current &&
-        Math.abs(gesture.dy) > CLAIM_THRESHOLD &&
-        Math.abs(gesture.dy) > Math.abs(gesture.dx),
+      // Claimed in the capture phase: the ScrollView is an ancestor, so by the
+      // bubble phase it has already taken the drag and the cube never moves.
+      onMoveShouldSetPanResponderCapture: (_, gesture) => claims(gesture),
+      onMoveShouldSetPanResponder: (_, gesture) => claims(gesture),
+      // Once the turn is under way it keeps the gesture to the end — the
+      // ScrollView asking for it back mid-drag is what made a swipe read as
+      // half a month-turn followed by a jump of the page.
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => setActive(true),
       onPanResponderMove: (_, gesture) => {
         const { dir, progress } = progressFor(gesture.dy);
         // Mounting the incoming face is a state change, so it happens once
@@ -384,6 +410,7 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
         turn.setValue(progress);
       },
       onPanResponderRelease: (_, gesture) => {
+        setActive(false);
         const { dir, progress } = progressFor(gesture.dy);
         // A flick counts as much as a long drag: past halfway, or still moving
         // that way fast enough that the finger clearly meant to keep going. The
@@ -420,6 +447,7 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
         });
       },
       onPanResponderTerminate: () => {
+        setActive(false);
         Animated.spring(turn, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start(
           ({ finished }) => finished && endTurn(),
         );

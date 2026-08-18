@@ -8,9 +8,10 @@ import * as choresService from "../services/choresService";
 import * as completionsService from "../services/completionsService";
 import { fireCompletionAlert } from "../notifications/completionAlerts";
 import { assignChores, getDayIndex, getPeriodIndex } from "../utils/rosterHelpers";
+import { buildDisplayNames } from "../utils/displayNames";
 import { useTheme } from "../context/ThemeContext";
-import { relativeLuminance } from "../theme/colorMath";
 import type { ThemeColors } from "../theme/colors";
+import { inkFor } from "../theme/cardInk";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import SettingsButton from "../components/SettingsButton";
@@ -18,7 +19,7 @@ import ChoreFormModal, { FREQUENCIES, type ChoreFormValues } from "../components
 import DayStrip from "../components/DayStrip";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { Ionicons } from "@expo/vector-icons";
-import type { Chore, Completion, FlatMember } from "../types";
+import type { Chore, Completion } from "../types";
 
 type Assignment = {
   chore: Chore;
@@ -26,10 +27,6 @@ type Assignment = {
   done: boolean;
 };
 
-// The card face sits on a flatmate's own colour, so its palette follows that
-// colour rather than the theme — member colours never invert, and a pastel
-// takes black ink while a deep one takes white.
-const CARD_HEADER_HEIGHT = 72;
 // Past this many chore chips the row stops naming them and trails off, rather
 // than shrinking every chip until none of them is readable.
 const MAX_TASK_CHIPS = 3;
@@ -40,53 +37,9 @@ const MAX_TASK_CHIPS = 3;
 const PIE_HALF = 9;
 const PIE_RADIUS = 15;
 
-type CardInk = {
-  /** The flatmate's name and the tick box. */
-  strong: string;
-  /** Chore chips: their text and their outline. */
-  body: string;
-  muted: string;
-  hairline: string;
-  /** Sits inside a filled tick box, so it has to be the card colour itself. */
-  onStrong: string;
-};
-
-const BLACK_INK: CardInk = {
-  strong: "#000000",
-  body: "rgba(0,0,0,0.78)",
-  muted: "rgba(0,0,0,0.5)",
-  hairline: "rgba(0,0,0,0.12)",
-  onStrong: "#ffffff",
-};
-
-const WHITE_INK: CardInk = {
-  strong: "#ffffff",
-  body: "rgba(255,255,255,0.88)",
-  muted: "rgba(255,255,255,0.65)",
-  hairline: "rgba(255,255,255,0.2)",
-  onStrong: "#000000",
-};
-
-// Luminance, not HSL lightness: a saturated yellow and a saturated blue can
-// claim the same lightness and be nowhere near equally readable in black.
-function inkFor(background: string): CardInk {
-  if (!/^#[0-9a-fA-F]{6}$/.test(background)) return BLACK_INK;
-  return relativeLuminance(background) > 0.35 ? BLACK_INK : WHITE_INK;
-}
-
-// First name only — the card name is set large and chunky, so a full name
-// would wrap. Falls back to "First L." when two flatmates share a first name.
-function buildDisplayNames(members: FlatMember[]): Record<string, string> {
-  const firsts = members.map((m) => (m.displayName || "").trim().split(/\s+/)[0] || m.displayName);
-  const out: Record<string, string> = {};
-  members.forEach((m) => {
-    const parts = (m.displayName || "").trim().split(/\s+/);
-    const first = parts[0] || m.displayName;
-    const duplicated = firsts.filter((n) => n === first).length > 1;
-    out[m.userId] = duplicated && parts.length > 1 ? `${first} ${parts[1][0].toUpperCase()}.` : first;
-  });
-  return out;
-}
+// The card face sits on a flatmate's own colour, so its palette follows that
+// colour rather than the theme — see theme/cardInk.
+const CARD_HEADER_HEIGHT = 72;
 
 // How far through a flatmate's jobs they are, drawn as a pizza: the fill
 // sweeps clockwise from twelve o'clock, so one of four is a quarter slice.

@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Switch, ScrollView, Alert, useWindowDimensions } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, Switch, ScrollView, Alert, Linking, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import * as flatService from "../services/flatService";
 import { ApiError } from "../services/apiClient";
+import { API_BASE_URL } from "../config/env";
 import { requestCompletionAlertPermission } from "../notifications/completionAlerts";
 import { getCompletionAlertsEnabled, setCompletionAlertsEnabled } from "../storage/preferences";
 import { useTheme } from "../context/ThemeContext";
@@ -46,9 +47,12 @@ export default function SettingsScreen() {
   const navigation = useNavigation();
   const { colors, scheme, setScheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { currentUser, userFlat, logout, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
+  const { currentUser, userFlat, logout, deleteAccount, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [termsVisible, setTermsVisible] = useState(false);
+  // Guards the delete button against a second tap while the request is in
+  // flight — the first one takes the account with it.
+  const [deleting, setDeleting] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const scrollYRef = useRef(0);
 
@@ -100,6 +104,53 @@ export default function SettingsScreen() {
       [
         { text: "Cancel", style: "cancel" },
         { text: "Leave", style: "destructive", onPress: () => leaveFlat() },
+      ],
+    );
+  };
+
+  // Served by the Worker alongside the API (workers/src/routes/legal.ts), so
+  // it's the same URL given to App Store Connect.
+  const openPrivacyPolicy = () => {
+    Linking.openURL(`${API_BASE_URL}/privacy`).catch(() =>
+      Alert.alert("Couldn't open the policy", "Check your connection and try again."),
+    );
+  };
+
+  const runDeleteAccount = async () => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      // Signs the session out as part of the same call, so RootNavigator
+      // drops back to the auth screen on its own — nothing to navigate here.
+      await deleteAccount();
+    } catch (err) {
+      setDeleting(false);
+      Alert.alert(
+        "Couldn't delete your account",
+        err instanceof ApiError ? err.message : "Something went wrong. Try again.",
+      );
+    }
+  };
+
+  // Asked twice on purpose. The first alert is the one that has to say what
+  // actually happens — that it takes the expenses and balances with it — and
+  // the second exists so the destructive button can't be hit by accident from
+  // a list of ordinary settings rows.
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      "Delete your account?",
+      "This permanently deletes your profile and everything you've added — expenses, events, list items and settle-ups. Any balance between you and your flatmates goes with it, so settle up first if you need to.\n\nYour flat itself stays for whoever's left in it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete account",
+          style: "destructive",
+          onPress: () =>
+            Alert.alert("This can't be undone", "Delete your Flatr account permanently?", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Delete permanently", style: "destructive", onPress: runDeleteAccount },
+            ]),
+        },
       ],
     );
   };
@@ -305,12 +356,28 @@ export default function SettingsScreen() {
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </Pressable>
 
+      <Pressable style={styles.settingRow} onPress={openPrivacyPolicy}>
+        <Text style={styles.settingLabel}>Privacy Policy</Text>
+        <Ionicons name="open-outline" size={16} color={colors.textMuted} />
+      </Pressable>
+
       <Pressable style={styles.dangerButton} onPress={confirmLeaveFlat}>
         <Text style={styles.dangerButtonText}>Leave flat</Text>
       </Pressable>
 
       <Pressable style={styles.signOutButton} onPress={() => logout()}>
         <Text style={styles.signOutText}>Sign out</Text>
+      </Pressable>
+
+      {/* Last thing on the page, and the only filled-red control in the app —
+          it has to be findable (App Store guideline 5.1.1(v) requires it to
+          be) without sitting anywhere near the buttons people use daily. */}
+      <Pressable
+        style={[styles.deleteButton, deleting && styles.deleteButtonBusy]}
+        onPress={confirmDeleteAccount}
+        disabled={deleting}
+      >
+        <Text style={styles.deleteButtonText}>{deleting ? "Deleting…" : "Delete account"}</Text>
       </Pressable>
 
       <TermsModal
@@ -351,8 +418,18 @@ function createStyles(colors: ThemeColors) {
   settingLabel: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.text },
   dangerButton: { borderWidth: 1, borderColor: colors.danger, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 32 },
   dangerButtonText: { fontFamily: fonts.bold, color: colors.danger, fontSize: typeScale.body },
-  signOutButton: { padding: 14, alignItems: "center", marginTop: 12, marginBottom: 32 },
+  signOutButton: { padding: 14, alignItems: "center", marginTop: 12 },
   signOutText: { fontFamily: fonts.bold, color: colors.textMuted, fontSize: typeScale.body },
+  deleteButton: {
+    backgroundColor: colors.danger,
+    borderRadius: 8,
+    padding: 14,
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 48,
+  },
+  deleteButtonBusy: { opacity: 0.6 },
+  deleteButtonText: { fontFamily: fonts.bold, color: "#ffffff", fontSize: typeScale.body },
 
   sectionHeader: {
     flexDirection: "row",

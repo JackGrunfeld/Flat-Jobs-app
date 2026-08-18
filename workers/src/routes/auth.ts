@@ -355,4 +355,84 @@ auth.patch("/me", requireAuth, async (c) => {
   return c.json({ user: userDto(row) });
 });
 
+// Permanent account deletion — App Store guideline 5.1.1(v) requires any app
+// that lets you create an account to let you delete it from inside the app,
+// and "delete" has to mean gone rather than deactivated.
+//
+// Most of the user's rows go on their own: auth_identities, flat_members,
+// chore_members, shopping_item_splits, push_tokens and refresh_tokens are all
+// declared ON DELETE CASCADE. The rest reference users(id) without a cascade
+// and so have to be dealt with explicitly, or D1 refuses the delete outright
+// on a foreign key constraint — which is the whole shape of what follows.
+//
+// The flat itself is the one judgement call. A flat is shared property, so
+// deleting one member can't take everyone else's chores and lists with it:
+// ownership is handed to whoever joined next, and only a flat that would be
+// left with nobody in it is deleted outright. What *is* removed is everything
+// this user authored — their expenses, their events, their list items, their
+// settlements — because those rows are records of one person and there is no
+// honest way to keep them once that person is gone. Balances their flatmates
+// were carrying against them therefore disappear too, which is why the app
+// says so before it calls this.
+auth.delete("/me", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const db = c.env.DB;
+
+  const user = await db.prepare("SELECT id FROM users WHERE id = ?").bind(userId).first<{ id: string }>();
+  if (!user) throw new HttpError(404, "User not found");
+
+  const statements: D1PreparedStatement[] = [];
+
+  // Any flat this user owns has to stop pointing at them before they can go.
+  const ownedFlats = await db
+    .prepare("SELECT id FROM flats WHERE owner_id = ?")
+    .bind(userId)
+    .all<{ id: string }>();
+
+  for (const flat of ownedFlats.results ?? []) {
+    const heir = await db
+      .prepare(
+        "SELECT user_id FROM flat_members WHERE flat_id = ? AND user_id != ? ORDER BY joined_at ASC LIMIT 1",
+      )
+      .bind(flat.id, userId)
+      .first<{ user_id: string }>();
+
+    if (heir) {
+      statements.push(db.prepare("UPDATE flats SET owner_id = ? WHERE id = ?").bind(heir.user_id, flat.id));
+    } else {
+      // Nobody left to hand it to. Deleting the flat cascades its chores,
+      // expenses, lists, events, settlements and invites with it.
+      statements.push(db.prepare("DELETE FROM flats WHERE id = ?").bind(flat.id));
+    }
+  }
+
+  statements.push(
+    // Authored content, in an order that respects the rows hanging off it —
+    // shopping_item_splits cascade from the item, upvotes from the list item.
+    db.prepare("DELETE FROM shopping_items WHERE added_by_user_id = ?").bind(userId),
+    db.prepare("DELETE FROM shopping_list_item_upvotes WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM shopping_list_items WHERE added_by_user_id = ?").bind(userId),
+    db.prepare("DELETE FROM events WHERE created_by = ?").bind(userId),
+    db.prepare("DELETE FROM chore_completions WHERE assigned_user_id = ?").bind(userId),
+    db.prepare("DELETE FROM settlements WHERE from_user_id = ? OR to_user_id = ?").bind(userId, userId),
+    // Nullable, so an invite someone else is still holding survives losing the
+    // person who sent it.
+    db.prepare("UPDATE flat_invites SET invited_by = NULL WHERE invited_by = ?").bind(userId),
+    // Cascades would cover these, but naming them keeps the sweep readable and
+    // survives a future migration that drops a cascade.
+    db.prepare("DELETE FROM chore_members WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM flat_members WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM push_tokens WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM refresh_tokens WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM auth_identities WHERE user_id = ?").bind(userId),
+    db.prepare("DELETE FROM users WHERE id = ?").bind(userId),
+  );
+
+  // One batch, so a failure part-way through can't leave a half-deleted
+  // account signed out of its own data.
+  await db.batch(statements);
+
+  return c.json({ success: true });
+});
+
 export default auth;

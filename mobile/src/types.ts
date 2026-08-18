@@ -109,8 +109,9 @@ export type Completion = {
 
 export type ShoppingCategory = "Food" | "Utilities" | "Household" | "Other";
 
-// A Splitwise-style expense: cost + split required. Deliberately separate
-// from ShoppingListItem below — see ShoppingScreen's List/Splitwise split.
+// A split-the-bill expense: cost + split required. Deliberately separate
+// from ShoppingListItem below — the plain checklist lives on the Shopping
+// tab, these live on Bills.
 export type ShoppingItem = {
   id: string;
   name: string;

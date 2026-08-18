@@ -4,6 +4,7 @@ import type { AppEnv } from "./types";
 import { HttpError } from "./types";
 
 import authRoutes from "./routes/auth";
+import appleNotificationsRoutes from "./routes/appleNotifications";
 import invitesRoutes from "./routes/invites";
 import flatsRoutes from "./routes/flats";
 import choresRoutes from "./routes/chores";
@@ -14,6 +15,7 @@ import shoppingListsRoutes from "./routes/shoppingLists";
 import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
 import eventsRoutes from "./routes/events";
+import legalRoutes from "./routes/legal";
 
 const app = new Hono<AppEnv>();
 
@@ -38,8 +40,11 @@ app.onError((err, c) => {
 });
 
 app.get("/", (c) => c.json({ ok: true }));
-
+// Public, unauthenticated: App Store Connect needs a reachable privacy policy
+// URL, and the app links to the same page from Settings.
+app.route("/", legalRoutes);
 app.route("/auth", authRoutes);
+app.route("/apple/notifications", appleNotificationsRoutes);
 app.route("/invites", invitesRoutes);
 app.route("/users/me/push-tokens", pushTokensRoutes);
 

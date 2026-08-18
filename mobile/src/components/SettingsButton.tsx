@@ -28,7 +28,7 @@ type Props = {
 };
 
 // Small gear button pinned to the top-right corner of every tab screen —
-// replaces the old Settings tab, which now frees that slot for Splitwise.
+// replaces the old Settings tab, which now frees that slot for Bills.
 export default function SettingsButton({ style, pointerEvents }: Props) {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();

@@ -20,6 +20,7 @@ type AuthContextValue = {
     acceptedTerms?: boolean,
   ) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refreshFlat: () => Promise<Flat | null>;
   leaveFlat: () => Promise<void>;
   updateDisplayName: (name: string) => Promise<void>;
@@ -119,6 +120,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserFlat(null);
   };
 
+  // Deletes the account server-side and then tears the session down exactly
+  // as a sign-out would — the tokens it was holding refer to a user that no
+  // longer exists, so they can't be left on the device.
+  const deleteAccount = async () => {
+    await authService.deleteAccount();
+    await clearTokens();
+    refreshTokenRef.current = null;
+    setCurrentUser(null);
+    setUserFlat(null);
+  };
+
   const leaveFlat = async () => {
     if (!userFlat) return;
     await flatService.leaveFlat(userFlat.id);
@@ -152,6 +164,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loginWithGoogle,
         loginWithApple,
         logout,
+        deleteAccount,
         refreshFlat,
         leaveFlat,
         updateDisplayName,

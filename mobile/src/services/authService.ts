@@ -44,3 +44,7 @@ export const updateDisplayName = (displayName: string) =>
 // (all three fields) and Settings' rename (displayName alone).
 export const updateProfile = (profile: { displayName?: string; birthday?: string; country?: string }) =>
   apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: JSON.stringify(profile) });
+
+// Permanent, immediate, and not undoable — see the Worker's DELETE /auth/me
+// for exactly what goes. The caller is responsible for having asked twice.
+export const deleteAccount = () => apiFetch<{ success: true }>("/auth/me", { method: "DELETE" });

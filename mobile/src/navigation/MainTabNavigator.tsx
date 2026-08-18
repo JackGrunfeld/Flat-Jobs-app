@@ -6,7 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import HomeScreen from "../screens/HomeScreen";
 import HouseScreen from "../screens/HouseScreen";
 import ShoppingScreen from "../screens/ShoppingScreen";
-import SplitwiseScreen from "../screens/SplitwiseScreen";
+import BillsScreen from "../screens/BillsScreen";
 import SwipeableTabScreen from "./SwipeableTabScreen";
 import FlatTabBar from "./FlatTabBar";
 
@@ -14,7 +14,7 @@ export type MainTabParamList = {
   Home: undefined;
   House: undefined;
   Shopping: undefined;
-  Splitwise: undefined;
+  Bills: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -107,8 +107,8 @@ export default function MainTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Splitwise"
-        component={SplitwiseScreen}
+        name="Bills"
+        component={BillsScreen}
         options={{
           tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name="currency-usd" size={size} color={color} />,
         }}

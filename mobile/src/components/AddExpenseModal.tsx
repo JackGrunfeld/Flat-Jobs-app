@@ -25,7 +25,7 @@ type Props = {
   onSubmit: (expense: NewExpense) => Promise<void>;
 };
 
-// The "Log an expense" form, lifted off the bottom of the Splitwise screen so
+// The "Log an expense" form, lifted off the bottom of the Bills screen so
 // that page shows only balances, expenses and settlement history. Opened by
 // the tab bar's centre "+".
 export default function AddExpenseModal({ visible, members, currentUserId, onClose, onSubmit }: Props) {

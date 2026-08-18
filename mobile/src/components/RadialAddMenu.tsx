@@ -42,7 +42,7 @@ export const RADIAL_ITEMS: RadialItem[] = [
     icon: (color, size) => <Ionicons name="cart-outline" size={size} color={color} />,
   },
   {
-    route: "Splitwise",
+    route: "Bills",
     label: "Expense",
     icon: (color, size) => <MaterialCommunityIcons name="currency-usd" size={size} color={color} />,
   },
