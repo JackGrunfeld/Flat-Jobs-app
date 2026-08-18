@@ -38,7 +38,8 @@
     "production": {
       "ios": {
         "appleTeamId": "P8KS9Q5PHU",
-        "bundleIdentifier": "com.flatjobs.app"
+        "bundleIdentifier": "com.flatjobs.app",
+        "ascAppId": "6802649634"
       }
     }
   }

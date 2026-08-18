@@ -11,6 +11,7 @@ an interactive login.
 | `expo-doctor` | 21/21 checks pass |
 | Bundle ID | `com.flatjobs.app` |
 | Apple Team ID | `P8KS9Q5PHU` (in `eas.json`) |
+| App Store Connect app ID | `6802649634` (in `eas.json` as `ascAppId`) |
 | Marketing version | `1.0.0` (`app.json` → `expo.version`) |
 | Build number | managed by EAS — `appVersionSource: "remote"` + `autoIncrement` |
 | Export compliance | pre-answered via `ios.config.usesNonExemptEncryption: false` |
@@ -39,24 +40,11 @@ eas init
 git add app.json && git commit -m "Link EAS project"
 ```
 
-**3. Create the App Store Connect record.** In App Store Connect → **Apps → +**:
-platform iOS, name **Flatr**, bundle ID **com.flatjobs.app**, any SKU. Register
-the bundle ID in the Apple Developer portal first if it isn't in the dropdown.
+~~**3. Create the App Store Connect record.**~~ Done — the app exists in App
+Store Connect with Apple ID **6802649634**.
 
-**4. Copy the app's Apple ID into `eas.json`.** It's on the app's
-**General → App Information** page — a ~10-digit number. Add it as `ascAppId`:
-
-```jsonc
-"submit": {
-  "production": {
-    "ios": {
-      "appleTeamId": "P8KS9Q5PHU",
-      "bundleIdentifier": "com.flatjobs.app",
-      "ascAppId": "0000000000"   // ← paste it here
-    }
-  }
-}
-```
+~~**4. Copy the app's Apple ID into `eas.json`.**~~ Done — it's set as
+`submit.production.ios.ascAppId`.
 
 **5. Create the APNs push key**, since the app uses `expo-notifications`:
 
