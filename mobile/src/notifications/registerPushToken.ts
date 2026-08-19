@@ -4,9 +4,10 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { registerPushToken } from "../services/pushTokensService";
 
-// Registers this device for real cross-device push (settlement notifications
-// — distinct from the local-only completionAlerts). Called on login and app
-// foreground since the underlying token can rotate.
+// Registers this device for cross-device push: settlements, a flatmate
+// ticking a chore off, and the morning chore digests the Worker's cron sends
+// (workers/src/lib/choreDigest.ts). Called on login and app foreground, since
+// the underlying token can rotate.
 export async function registerForPushNotificationsAsync(): Promise<void> {
   if (!Device.isDevice) return; // push tokens aren't available on simulators/emulators
 

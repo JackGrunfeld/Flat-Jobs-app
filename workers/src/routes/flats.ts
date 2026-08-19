@@ -24,9 +24,13 @@ async function loadFlatDto(db: D1Database, flatId: string) {
 
   const { results: memberRows } = await db
     .prepare(
+      // Explicitly ordered: the chore rotation is an index into this list, so
+      // an unordered scan would be free to hand the same week's chores to
+      // different people on the app and in the digest job (see lib/roster.ts).
       `SELECT fm.user_id, u.display_name, fm.color, u.birthday
        FROM flat_members fm JOIN users u ON u.id = fm.user_id
-       WHERE fm.flat_id = ?`,
+       WHERE fm.flat_id = ?
+       ORDER BY fm.joined_at ASC, fm.user_id ASC`,
     )
     .bind(flatId)
     .all<MemberRow>();

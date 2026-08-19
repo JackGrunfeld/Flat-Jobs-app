@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet, Switch, ScrollView, Alert, Linking, useWindowDimensions } from "react-native";
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, Linking, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,8 +7,6 @@ import { useAuth } from "../context/AuthContext";
 import * as flatService from "../services/flatService";
 import { ApiError } from "../services/apiClient";
 import { API_BASE_URL } from "../config/env";
-import { requestCompletionAlertPermission } from "../notifications/completionAlerts";
-import { getCompletionAlertsEnabled, setCompletionAlertsEnabled } from "../storage/preferences";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
@@ -48,7 +46,6 @@ export default function SettingsScreen() {
   const { colors, scheme, setScheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat, logout, deleteAccount, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [termsVisible, setTermsVisible] = useState(false);
   // Guards the delete button against a second tap while the request is in
   // flight — the first one takes the account with it.
@@ -68,7 +65,6 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      getCompletionAlertsEnabled().then(setAlertsEnabled);
       setFlatName(userFlat?.name ?? "");
       setDisplayNameInput(currentUser?.displayName ?? "");
     }, [userFlat?.name, currentUser?.displayName]),
@@ -83,18 +79,6 @@ export default function SettingsScreen() {
   const pickColor = async (color: string) => {
     await flatService.updateMemberColor(userFlat.id, color);
     await refreshFlat();
-  };
-
-  const onToggleAlerts = async (value: boolean) => {
-    if (value) {
-      const granted = await requestCompletionAlertPermission();
-      if (!granted) {
-        Alert.alert("Permission needed", "Enable notifications in system settings to turn this on.");
-        return;
-      }
-    }
-    setAlertsEnabled(value);
-    await setCompletionAlertsEnabled(value);
   };
 
   const confirmLeaveFlat = () => {
@@ -113,6 +97,14 @@ export default function SettingsScreen() {
   const openPrivacyPolicy = () => {
     Linking.openURL(`${API_BASE_URL}/privacy`).catch(() =>
       Alert.alert("Couldn't open the policy", "Check your connection and try again."),
+    );
+  };
+
+  // Chore digests and the "X ticked off Y" pushes are all system
+  // notifications, so this is the one place they can be turned off.
+  const openNotificationSettings = () => {
+    Linking.openSettings().catch(() =>
+      Alert.alert("Couldn't open settings", "Open Settings › Notifications › Flatr to change this."),
     );
   };
 
@@ -339,15 +331,13 @@ export default function SettingsScreen() {
         </View>
       )}
 
-      <View style={styles.settingRow}>
-        <Text style={styles.settingLabel}>Completion alerts</Text>
-        <Switch
-          value={alertsEnabled}
-          onValueChange={onToggleAlerts}
-          trackColor={{ false: colors.border, true: colors.accent }}
-          thumbColor="#fff"
-        />
-      </View>
+      {/* Chore notifications are sent by the server to the whole flat now, so
+          there is no in-app preference left to flip — the real switch is the
+          OS permission, which is where this goes. */}
+      <Pressable style={styles.settingRow} onPress={openNotificationSettings}>
+        <Text style={styles.settingLabel}>Notifications</Text>
+        <Ionicons name="open-outline" size={16} color={colors.textMuted} />
+      </Pressable>
 
       {/* The terms have to stay reachable after sign-up, not just at the
           moment of acceptance — read-only here, so there's no second gate. */}

@@ -45,6 +45,7 @@ import {
   weekdayLabel,
 } from "../utils/calendarEvents";
 import AnimatedAddAction from "./AnimatedAddAction";
+import ModalSheet, { createFormStyles } from "./ModalSheet";
 
 // The month runs seven to a row from the 1st, under a header of weekday
 // initials — which holds because seven columns means every cell in a column
@@ -238,6 +239,7 @@ const formatDateLabel = (date: Date) =>
 export default function CalendarStrip({ events, today, monthRange, onCreateEvent, onUpdateEvent, onDeleteEvent, rows, openAddSignal, onRefresh, onSwipeActive }: Props) {
   const { colors, scheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const form = useMemo(() => createFormStyles(colors), [colors]);
 
   // The card is either the calendar or the add form — never both. Swapping in
   // place is what the "+" turns the widget into.
@@ -598,6 +600,22 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
     setAdding(true);
   };
 
+  // What holding a day does depends on whether there's anything on it: a day
+  // with events opens its list, and an empty one goes straight to the add
+  // form. The empty list view had nothing to show and one button on it — "+",
+  // aimed at the day just held — so this is that same trip, minus the stop.
+  const openDayOnHold = (iso: string) => {
+    if (eventsByDate.get(iso)?.length) {
+      openViewForDay(iso);
+      return;
+    }
+    // Same focus the list view would have taken, so the form opens on this
+    // day and the cell reads as tapped behind it.
+    setFocusedISO(iso);
+    setSelectedISO(null);
+    openAddForm(iso);
+  };
+
   useEffect(() => {
     if (openAddSignal === undefined) return;
     // Ignore the initial mount — only open when the signal changes afterward.
@@ -820,7 +838,13 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
       monthDate.getFullYear() === activeDate.getFullYear() &&
       monthDate.getMonth() === activeDate.getMonth();
     const showsSelectedDate = Boolean(viewMode && activeDateInMonth && activeDate);
-    const showsToday = !viewMode;
+    // Today's date number only means anything on the month it falls in. Turn
+    // the cube to any other month and the corner gives that month's year
+    // instead — otherwise a page of, say, next March sits under a big red 19
+    // belonging to this one.
+    const faceIsThisMonth =
+      faceMonth.getFullYear() === today.getFullYear() && faceMonth.getMonth() === today.getMonth();
+    const showsToday = !viewMode && faceIsThisMonth;
     const cornerSize = showsSelectedDate || showsToday ? DATE_NUM_SIZE : YEAR_SIZE;
     const cornerTextStyle = showsSelectedDate || showsToday ? styles.cornerDate : styles.cornerYear;
 
@@ -851,7 +875,7 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                     ? activeDate.getDate()
                     : showsToday
                       ? today.getDate()
-                      : monthDate.getFullYear()}
+                      : faceMonth.getFullYear()}
                 </Text>
               )}
               <View style={[styles.letterCell, letterColumn > 0 && { width: letterColumn }]}>
@@ -873,14 +897,20 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                 events for the chosen day. */}
             {live && viewMode && viewingISO ? (
               <View style={[styles.viewList, { height: viewListHeight }]}>
-                {/* The list starts at the top of the card: the day it's about
-                    is already named by the date in the corner beside it and by
-                    the banner underneath, so a header here would only be
-                    repeating them — in the one place where the space is worth
-                    another event instead. The controls live along the bottom
-                    for the same reason, and land under the thumb rather than up
-                    in the far corner. */}
-                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+                {/* No header row: the day this is about is already named by
+                    the date in the corner beside it and by the banner
+                    underneath, so one here would only repeat them — in the one
+                    place where the space is worth another event instead. "+"
+                    rides the bottom bar, under the thumb; closing sits in the
+                    widget's top-right corner, where every other close in the
+                    app is. */}
+                <ScrollView
+                  style={{ flex: 1 }}
+                  // Starts the first event below the close button in the
+                  // corner, so its edit/delete icons aren't underneath it.
+                  contentContainerStyle={{ paddingTop: 28 }}
+                  showsVerticalScrollIndicator={false}
+                >
                   {(eventsByDate.get(viewingISO) ?? []).length === 0 && (
                     <Text style={styles.viewEmpty}>Nothing on this day</Text>
                   )}
@@ -914,24 +944,14 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                     );
                   })}
                 </ScrollView>
-                {/* Both controls ride along the bottom of the list: "+" adds to
-                    the day already being looked at, without closing the list to
-                    re-aim the calendar's own, and the day it's about is named on
-                    the left so the header the list used to carry isn't missed.
-                    Down here they're under the thumb, and the top of the card —
-                    the easiest place to read — is all events. */}
+                {/* "+" adds to the day already being looked at, without
+                    closing the list to re-aim the calendar's own, and the day
+                    it's about is named on the left so the header the list used
+                    to carry isn't missed. */}
                 <View style={styles.viewFooter}>
                   <Text style={styles.viewFooterDate} numberOfLines={1}>
                     {formatDateLabel(fromISODate(viewingISO) ?? today)}
                   </Text>
-                  <Pressable
-                    onPress={() => setViewMode(false)}
-                    style={styles.viewFooterButton}
-                    hitSlop={8}
-                    accessibilityLabel="Back to the month"
-                  >
-                    <Ionicons name="close" size={18} color={ON_DARK_MUTED} />
-                  </Pressable>
                   <Pressable
                     onPress={() => openAddForm(viewingISO)}
                     style={[styles.viewFooterButton, styles.viewAddButton]}
@@ -993,13 +1013,17 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
                     onPress={() => onDayPress(iso)}
                     // Only the live face is a real calendar — the incoming one
                     // is mid-turn and must not take a gesture.
-                    onLongPress={live ? () => openViewForDay(iso) : undefined}
+                    onLongPress={live ? () => openDayOnHold(iso) : undefined}
                     delayLongPress={300}
                     accessibilityLabel={[
                       `${day.getDate()} ${monthLabel(viewedMonth)}`,
                       category ? `, ${category.label}` : hasEvent ? ", has events" : "",
                     ].join("")}
-                    accessibilityHint="Press and hold to see everything on this day"
+                    accessibilityHint={
+                      hasEvent
+                        ? "Press and hold to see everything on this day"
+                        : "Press and hold to add an event on this day"
+                    }
                     style={styles.cell}
                   >
                     <View
@@ -1103,166 +1127,6 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
     [turn, half, spin],
   );
 
-  if (adding) {
-    return (
-      <View style={styles.card}>
-        <View style={styles.formHeader}>
-          <Text style={styles.formTitle}>New event</Text>
-          <Pressable onPress={closeAddForm} hitSlop={8} accessibilityLabel="Cancel">
-            <Ionicons name="close" size={18} color={ON_DARK_MUTED} />
-          </Pressable>
-        </View>
-
-        <TextInput
-          style={styles.input}
-          value={draftTitle}
-          onChangeText={(text) => {
-            setDraftTitle(text);
-            if (error) setError(null);
-          }}
-          placeholder="What's on?"
-          placeholderTextColor={ON_DARK_MUTED}
-          maxLength={120}
-          autoFocus
-          returnKeyType="done"
-          onSubmitEditing={submit}
-        />
-
-        <View style={styles.fieldRow}>
-          <Pressable style={styles.field} onPress={() => setPicker("date")}>
-            <Ionicons name="calendar-outline" size={14} color={ON_DARK_MUTED} />
-            <Text style={styles.fieldText}>{formatDateLabel(draftDate)}</Text>
-          </Pressable>
-
-          <Pressable style={styles.field} onPress={() => setPicker("time")}>
-            <Ionicons name="time-outline" size={14} color={ON_DARK_MUTED} />
-            <Text style={[styles.fieldText, !draftTime && { color: ON_DARK_MUTED }]}>
-              {draftTime ? formatTime(toHHMM(draftTime)) : "All day"}
-            </Text>
-          </Pressable>
-
-          {draftTime && (
-            <Pressable onPress={() => setDraftTime(null)} hitSlop={8} accessibilityLabel="Clear time">
-              <Ionicons name="close-circle" size={16} color={ON_DARK_MUTED} />
-            </Pressable>
-          )}
-        </View>
-
-        <View style={styles.fieldRow}>
-          {draftEnd ? (
-            <>
-              <Pressable style={styles.field} onPress={() => setPicker("end")}>
-                <Ionicons name="arrow-forward" size={14} color={ON_DARK_MUTED} />
-                <Text style={styles.fieldText}>{formatDateLabel(draftEnd)}</Text>
-              </Pressable>
-              <Pressable onPress={() => setDraftEnd(null)} hitSlop={8} accessibilityLabel="Clear end date">
-                <Ionicons name="close-circle" size={16} color={ON_DARK_MUTED} />
-              </Pressable>
-            </>
-          ) : (
-            <Pressable style={styles.field} onPress={() => setDraftEnd(addDays(draftDate, 1))}>
-              <Ionicons name="add" size={14} color={ON_DARK_MUTED} />
-              <Text style={[styles.fieldText, { color: ON_DARK_MUTED }]}>Runs over days</Text>
-            </Pressable>
-          )}
-        </View>
-
-        <Text style={styles.pickerLabel}>Repeats</Text>
-        <View style={styles.chipRow}>
-          {RECURRENCE_ORDER.map((option) => {
-            const active = draftRepeat === option;
-            return (
-              <Pressable
-                key={option}
-                onPress={() => setDraftRepeat(active ? null : option)}
-                style={[styles.chip, active && { backgroundColor: CAL_RED, borderColor: CAL_RED }]}
-              >
-                <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                  {RECURRENCE_LABELS[option]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Text style={styles.pickerLabel}>Category</Text>
-        <View style={styles.chipRow}>
-          {CATEGORY_ORDER.map((option) => {
-            const style = EVENT_CATEGORIES[option];
-            const active = draftCategory === option;
-            return (
-              <Pressable
-                key={option}
-                onPress={() => setDraftCategory(active ? null : option)}
-                style={[
-                  styles.chip,
-                  { borderColor: active ? style.color : ON_DARK_LINE },
-                  active && { backgroundColor: withAlpha(style.color, 0.2) },
-                ]}
-              >
-                <Ionicons
-                  name={style.icon as never}
-                  size={12}
-                  color={active ? style.color : ON_DARK_MUTED}
-                />
-                <Text style={[styles.chipText, active && { color: style.color }]}>{style.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {error && <Text style={styles.error}>{error}</Text>}
-
-        <Pressable
-          style={[styles.saveButton, saving && { opacity: 0.6 }]}
-          onPress={submit}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator size="small" color={colors.accentText} />
-          ) : (
-            <Text style={styles.saveLabel}>{editingId ? "Save changes" : "Add to calendar"}</Text>
-          )}
-        </Pressable>
-
-        {Platform.OS === "android" && picker !== null && (
-          <DateTimePicker
-            value={pickerValue}
-            mode={picker === "time" ? "time" : "date"}
-            display="default"
-            minimumDate={picker === "end" ? draftDate : undefined}
-            onChange={onAndroidPickerChange}
-          />
-        )}
-
-        {Platform.OS === "ios" && (
-          <Modal
-            visible={picker !== null}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setPicker(null)}
-          >
-            <Pressable style={styles.pickerBackdrop} onPress={() => setPicker(null)}>
-              <Pressable style={styles.pickerSheet} onPress={() => {}}>
-                <DateTimePicker
-                  value={pickerValue}
-                  mode={picker === "time" ? "time" : "date"}
-                  display="spinner"
-                  themeVariant={scheme}
-                  minimumDate={picker === "end" ? draftDate : undefined}
-                  onChange={(_, selected) => selected && applyPicked(selected)}
-                />
-                <Pressable style={styles.pickerDone} onPress={() => setPicker(null)}>
-                  <Text style={styles.saveLabel}>Done</Text>
-                </Pressable>
-              </Pressable>
-            </Pressable>
-          </Modal>
-        )}
-      </View>
-    );
-  }
-
   return (
     <>
       <View style={[styles.card, styles.monthCard, { overflow: "hidden" }]} {...panResponder.panHandlers}>
@@ -1308,6 +1172,23 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
             </Animated.View>
           )}
         </View>
+
+        {/* Pinned to the widget rather than to the list inside it, so it lands
+            in the same corner as the settings gear and the modals' close —
+            and stays put while the list scrolls under it. Filled with the
+            card's own colour so an event row passing behind doesn't show
+            through it. */}
+        {viewMode && viewingISO ? (
+          <Pressable
+            onPress={() => setViewMode(false)}
+            style={styles.viewClose}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Back to the month"
+          >
+            <Ionicons name="close" size={18} color={ON_DARK_MUTED} />
+          </Pressable>
+        ) : null}
       </View>
 
       <Pressable
@@ -1378,6 +1259,162 @@ export default function CalendarStrip({ events, today, monthRange, onCreateEvent
           />
         </View>
       </Pressable>
+
+      <ModalSheet
+        visible={adding}
+        title={editingId ? "Edit event" : "New event"}
+        onClose={closeAddForm}
+        footer={
+          <Pressable
+            style={[form.primaryButton, saving && form.primaryButtonDisabled]}
+            onPress={submit}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={colors.accentText} />
+            ) : (
+              <Text style={form.primaryButtonText}>{editingId ? "Save changes" : "Add to calendar"}</Text>
+            )}
+          </Pressable>
+        }
+      >
+        <Text style={form.fieldLabel}>What's on?</Text>
+        <TextInput
+          style={form.input}
+          value={draftTitle}
+          onChangeText={(text) => {
+            setDraftTitle(text);
+            if (error) setError(null);
+          }}
+          placeholder="e.g. Rent due"
+          placeholderTextColor={colors.textMuted}
+          maxLength={120}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={submit}
+        />
+
+        <Text style={form.fieldLabel}>Date</Text>
+        <View style={form.row}>
+          <Pressable style={form.chip} onPress={() => setPicker("date")}>
+            <Ionicons name="calendar-outline" size={14} color={colors.text} />
+            <Text style={form.chipText}>{formatDateLabel(draftDate)}</Text>
+          </Pressable>
+
+          <Pressable style={form.chip} onPress={() => setPicker("time")}>
+            <Ionicons name="time-outline" size={14} color={colors.text} />
+            <Text style={[form.chipText, !draftTime && { color: colors.textMuted }]}>
+              {draftTime ? formatTime(toHHMM(draftTime)) : "All day"}
+            </Text>
+          </Pressable>
+
+          {draftTime && (
+            <Pressable onPress={() => setDraftTime(null)} hitSlop={8} accessibilityLabel="Clear time">
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
+
+        <View style={form.row}>
+          {draftEnd ? (
+            <>
+              <Pressable style={form.chip} onPress={() => setPicker("end")}>
+                <Ionicons name="arrow-forward" size={14} color={colors.text} />
+                <Text style={form.chipText}>{formatDateLabel(draftEnd)}</Text>
+              </Pressable>
+              <Pressable onPress={() => setDraftEnd(null)} hitSlop={8} accessibilityLabel="Clear end date">
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+              </Pressable>
+            </>
+          ) : (
+            <Pressable style={form.chip} onPress={() => setDraftEnd(addDays(draftDate, 1))}>
+              <Ionicons name="add" size={14} color={colors.textMuted} />
+              <Text style={[form.chipText, { color: colors.textMuted }]}>Runs over days</Text>
+            </Pressable>
+          )}
+        </View>
+
+        <Text style={form.fieldLabel}>Repeats</Text>
+        <View style={form.row}>
+          {RECURRENCE_ORDER.map((option) => {
+            const active = draftRepeat === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setDraftRepeat(active ? null : option)}
+                style={[form.chip, active && form.chipActive]}
+              >
+                <Text style={[form.chipText, active && form.chipTextActive]}>
+                  {RECURRENCE_LABELS[option]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Text style={form.fieldLabel}>Category</Text>
+        <View style={form.row}>
+          {CATEGORY_ORDER.map((option) => {
+            const style = EVENT_CATEGORIES[option];
+            const active = draftCategory === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => setDraftCategory(active ? null : option)}
+                style={[
+                  form.chip,
+                  { borderColor: active ? style.color : colors.border },
+                  active && { backgroundColor: withAlpha(style.color, 0.2) },
+                ]}
+              >
+                <Ionicons
+                  name={style.icon as never}
+                  size={12}
+                  color={active ? style.color : colors.textMuted}
+                />
+                <Text style={[form.chipText, active && { color: style.color }]}>{style.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {error && <Text style={styles.error}>{error}</Text>}
+
+        {Platform.OS === "android" && picker !== null && (
+          <DateTimePicker
+            value={pickerValue}
+            mode={picker === "time" ? "time" : "date"}
+            display="default"
+            minimumDate={picker === "end" ? draftDate : undefined}
+            onChange={onAndroidPickerChange}
+          />
+        )}
+
+        {Platform.OS === "ios" && (
+          <Modal
+            visible={picker !== null}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setPicker(null)}
+          >
+            <Pressable style={styles.pickerBackdrop} onPress={() => setPicker(null)}>
+              <Pressable style={styles.pickerSheet} onPress={() => {}}>
+                <DateTimePicker
+                  value={pickerValue}
+                  mode={picker === "time" ? "time" : "date"}
+                  display="spinner"
+                  themeVariant={scheme}
+                  minimumDate={picker === "end" ? draftDate : undefined}
+                  onChange={(_, selected) => selected && applyPicked(selected)}
+                />
+                <Pressable style={styles.pickerDone} onPress={() => setPicker(null)}>
+                  <Text style={styles.saveLabel}>Done</Text>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        )}
+      </ModalSheet>
     </>
   );
 }
@@ -1394,7 +1431,11 @@ function createStyles(colors: ThemeColors) {
     // follows, so they still read as one widget in two parts rather than as
     // two unrelated cards that happen to be adjacent.
     monthCard: { marginBottom: 8 },
-    eventCard: { flexDirection: "row", alignItems: "center", gap: 12 },
+    // No bottom margin: the banner is the last thing the widget draws, so what
+    // follows it is the caller's spacing to set. Carrying the card's own 10 as
+    // well stacked two gaps into one and left the mosaic underneath sitting
+    // nearly twice as far down as its own tiles are from each other.
+    eventCard: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 0 },
     topRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
     cubeStage: { position: "relative" },
     // Hidden backfaces, so a face turned past square disappears rather than
@@ -1499,7 +1540,21 @@ function createStyles(colors: ThemeColors) {
       paddingTop: 6,
       marginTop: 2,
     },
-    // Takes the slack, which pushes both buttons to the right edge.
+    viewClose: {
+      position: "absolute",
+      top: 10,
+      right: 10,
+      width: 30,
+      height: 30,
+      borderRadius: 9,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: CAL_DARK,
+      borderWidth: 1.5,
+      borderColor: ON_DARK_LINE,
+      zIndex: 5,
+    },
+    // Takes the slack, which pushes the add button to the right edge.
     viewFooterDate: { flex: 1, fontFamily: fonts.bold, fontSize: 12, color: ON_DARK_MUTED },
     viewFooterButton: {
       width: 30,
@@ -1512,30 +1567,6 @@ function createStyles(colors: ThemeColors) {
       borderWidth: 1.5,
       borderColor: ON_DARK_LINE,
     },
-    pickerLabel: {
-      fontFamily: fonts.bold,
-      fontSize: 9,
-      letterSpacing: 1.2,
-      textTransform: "uppercase",
-      color: ON_DARK_MUTED,
-      marginTop: 12,
-      marginBottom: 6,
-    },
-    chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-    chip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      borderWidth: 1,
-      borderColor: ON_DARK_LINE,
-      borderRadius: 999,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
-    },
-    chipText: { fontFamily: fonts.bold, fontSize: 11, color: ON_DARK_MUTED },
-    // The repeat chips fill with the card's red, which is dark enough behind
-    // this that the label has to flip rather than just brighten.
-    chipTextActive: { color: ON_DARK },
     nextTitle: { fontFamily: fonts.bold, fontSize: 15, color: ON_DARK },
     nextWhen: { fontFamily: fonts.regular, fontSize: 12, color: ON_DARK_MUTED, marginTop: 3 },
     empty: { fontFamily: fonts.regular, fontSize: 13, color: ON_DARK_MUTED },
@@ -1551,45 +1582,9 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
     },
 
-    // --- add form ---------------------------------------------------------
-    formHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 12,
-    },
-    formTitle: { fontFamily: fonts.display, fontSize: 15, letterSpacing: 1, color: ON_DARK },
-    input: {
-      fontFamily: fonts.regular,
-      fontSize: 14,
-      color: ON_DARK,
-      backgroundColor: CAL_FIELD,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    fieldRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
-    field: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-      backgroundColor: CAL_FIELD,
-      borderRadius: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 9,
-    },
-    fieldText: { fontFamily: fonts.bold, fontSize: 12, color: ON_DARK },
     // The theme's danger red is mixed for light surfaces and goes muddy on
     // this plate — the card's own red is the one that carries here.
     error: { fontFamily: fonts.regular, fontSize: 11, color: CAL_RED, marginTop: 8 },
-    saveButton: {
-      backgroundColor: colors.accent,
-      borderRadius: 10,
-      paddingVertical: 11,
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 12,
-    },
     saveLabel: { fontFamily: fonts.bold, fontSize: 13, color: colors.accentText, letterSpacing: 0.5 },
     pickerBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0, 0, 0, 0.45)" },
     pickerSheet: { backgroundColor: colors.surface, paddingBottom: 28, paddingTop: 8 },

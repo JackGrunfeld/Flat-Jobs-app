@@ -11,9 +11,10 @@ import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import RootNavigator from "./src/navigation/RootNavigator";
 import { GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_SIGNIN_CONFIGURED } from "./src/config/env";
 
-// Foreground display config for local completion alerts (and any settlement
-// push that arrives while the app is open) — Expo suppresses foreground
-// notifications unless this is set, unlike the web Notification API.
+// Foreground display config. Expo suppresses notifications that arrive while
+// the app is open unless this is set — which is most of what the app sends
+// now: a flatmate ticking a chore off lands while everyone else is likely to
+// be looking at the roster.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,

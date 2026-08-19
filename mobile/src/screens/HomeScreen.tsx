@@ -1,13 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Animated,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-} from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,7 +15,7 @@ import { useTheme } from "../context/ThemeContext";
 import { CARD_TONES, onColor, withAlpha, CAL_PLATE } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
-import SettingsButton from "../components/SettingsButton";
+import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
 import CalendarStrip from "../components/CalendarStrip";
 import RevealTile from "../components/RevealTile";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
@@ -68,21 +60,6 @@ const FACE = 28;
 const FACE_LARGE = 34;
 // How much each face slides under the one before it.
 const FACE_OVERLAP = 9;
-
-// The gear in the corner isn't part of the dashboard, so it stays out of the
-// way until asked for: swiping up the page brings it down into place over this
-// much scroll, and returning to the top puts it away again. Tied to the scroll
-// offset rather than to a gesture of its own so it tracks the swipe itself —
-// it arrives as far as you've pulled, not on a threshold being tripped. Short
-// on purpose: the dashboard very nearly fits the screen (on a big phone it
-// fits outright), so there's barely any scroll range to spend, and the content
-// container below is padded to guarantee at least this much of it.
-const SETTINGS_REVEAL = 40;
-// How far above its resting place the button waits. Short: it's a drop into
-// position, and the fade is what does most of the hiding.
-const SETTINGS_DROP = 20;
-// Past this much of the reveal it's solid enough to be worth tapping.
-const SETTINGS_LIVE_AT = SETTINGS_REVEAL / 2;
 
 // How far ahead the bills card counts as "due". A fortnight covers the weekly
 // and fortnightly cadences outright and catches a monthly bill with enough
@@ -206,53 +183,6 @@ export default function HomeScreen() {
     pauseMs: 900,
     cursorBlinkMs: 420,
   });
-
-  // Native-driven, so the button moves with the finger rather than a frame
-  // behind it. The listener rides along on the same event purely to flip the
-  // button's tap target on and off, which is a JS-side concern.
-  const scrollY = useRef(new Animated.Value(0)).current;
-  const [settingsLive, setSettingsLive] = useState(false);
-  // Measured rather than taken from the window, so it's the scroll view's own
-  // visible height whatever the tab bar and safe areas take out of it.
-  const [viewportHeight, setViewportHeight] = useState(0);
-  // The calendar turns months on a vertical drag, and a native ScrollView goes
-  // on scrolling underneath a JS responder — so the page holds still for as
-  // long as the calendar owns the gesture. Only for that gesture's duration:
-  // the dashboard still scrolls from anywhere else, and from the calendar
-  // itself the moment the turn is let go of.
-  const [calendarSwiping, setCalendarSwiping] = useState(false);
-
-  const onScroll = useMemo(
-    () =>
-      Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-        useNativeDriver: true,
-        listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-          const live = event.nativeEvent.contentOffset.y > SETTINGS_LIVE_AT;
-          setSettingsLive((prev) => (prev === live ? prev : live));
-        },
-      }),
-    [scrollY],
-  );
-
-  const settingsReveal = useMemo(
-    () => ({
-      opacity: scrollY.interpolate({
-        inputRange: [0, SETTINGS_REVEAL],
-        outputRange: [0, 1],
-        extrapolate: "clamp" as const,
-      }),
-      transform: [
-        {
-          translateY: scrollY.interpolate({
-            inputRange: [0, SETTINGS_REVEAL],
-            outputRange: [-SETTINGS_DROP, 0],
-            extrapolate: "clamp" as const,
-          }),
-        },
-      ],
-    }),
-    [scrollY],
-  );
 
   // Refreshed on focus rather than memoised once, so the strip rolls over if
   // the app sits open past midnight.
@@ -496,27 +426,8 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.container, { paddingTop: insets.top + 6 }]}>
-        {/* The dashboard scrolls. The calendar's height is dynamic (it grows
-            with the month's week count), so a fixed block would run off the
-            bottom of a shorter phone — which is exactly what it did. The
-            calendar's own PanResponder only claims vertical drags that start
-            on it, so month-turning still wins there and the page scrolls
-            everywhere else. */}
-        <Animated.ScrollView
-          style={{ flex: 1 }}
-          onLayout={(e) => setViewportHeight(e.nativeEvent.layout.height)}
-          // minHeight guarantees scroll range even when the content is shorter
-          // than the viewport, which is what the settings button rides on.
-          contentContainerStyle={{
-            paddingBottom: tabBarSpace + 12,
-            minHeight: viewportHeight + SETTINGS_REVEAL,
-          }}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          scrollEnabled={!calendarSwiping}
-          showsVerticalScrollIndicator={false}
-        >
+      <View style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}>
+        <View style={{ flex: 1, paddingBottom: tabBarSpace + 12 }}>
           <Text
             style={styles.greeting}
             numberOfLines={1}
@@ -549,7 +460,6 @@ export default function HomeScreen() {
                 rows={flatEvents}
                 onRefresh={loadEvents}
                 openAddSignal={openAddSignal}
-                onSwipeActive={setCalendarSwiping}
               />
             </RevealTile>
           </View>
@@ -577,7 +487,9 @@ export default function HomeScreen() {
                         />
                         <Text style={[styles.bentoTitle, { color: fg }]}>Chores</Text>
                         <Text style={[styles.bentoValue, { color: fg }]}>{choreStat}</Text>
-                        <Text style={[styles.bentoLine, { color: withAlpha(fg, 0.7) }]}>{choreCaption}</Text>
+                        <Text style={[styles.bentoLine, { color: withAlpha(fg, 0.7) }]} numberOfLines={2}>
+                          {choreCaption}
+                        </Text>
 
                         <View style={styles.bentoSpacer} />
 
@@ -605,7 +517,14 @@ export default function HomeScreen() {
                             <View style={[styles.tickBadge, { backgroundColor: withAlpha(fg, 0.16) }]}>
                               <Ionicons name="checkmark" size={16} color={fg} />
                             </View>
-                            <Text style={[styles.attributionName, { color: fg }]}>Nothing outstanding</Text>
+                            <Text
+                              style={[styles.attributionName, styles.attributionSolo, { color: fg }]}
+                              numberOfLines={1}
+                              adjustsFontSizeToFit
+                              minimumFontScale={0.85}
+                            >
+                              Nothing outstanding
+                            </Text>
                           </View>
                         )}
                       </>
@@ -720,9 +639,9 @@ export default function HomeScreen() {
               </BentoCard>
             </RevealTile>
           </View>
-        </Animated.ScrollView>
+        </View>
       </View>
-      <SettingsButton style={settingsReveal} pointerEvents={settingsLive ? "auto" : "none"} />
+      <SettingsButton />
     </View>
   );
 }
@@ -815,10 +734,16 @@ function createStyles(colors: ThemeColors) {
   // much copy sits above it.
   bentoSpacer: { flex: 1, minHeight: 8 },
 
-  attribution: { flexDirection: "row", alignItems: "center", gap: 9 },
-  attributionText: { flex: 1 },
+  // Right-padded to clear the arrow badge: the badge is 26pt wide sitting 12pt
+  // from the card's edge, and the card pads 14, so it reaches 24pt into the
+  // content box — the row has to stop short of that or the name runs under it.
+  attribution: { flexDirection: "row", alignItems: "center", gap: 9, paddingRight: 30 },
+  attributionText: { flex: 1, minWidth: 0 },
   attributionRole: { fontFamily: fonts.regular, fontSize: 10, letterSpacing: 0.4 },
   attributionName: { fontFamily: fonts.bold, fontSize: 13, marginTop: 1 },
+  // A Text sitting straight in the row rather than inside attributionText
+  // needs its own flex, or RN lets it run full width past the padding.
+  attributionSolo: { flex: 1, minWidth: 0 },
   tickBadge: { width: FACE_LARGE, height: FACE_LARGE, borderRadius: FACE_LARGE / 2, alignItems: "center", justifyContent: "center" },
 
   avatar: { alignItems: "center", justifyContent: "center" },

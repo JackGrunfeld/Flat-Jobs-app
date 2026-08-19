@@ -39,7 +39,6 @@ export default function FlatSetupScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const polledOnce = useRef(false);
-  const { text: welcomeText, cursorOn: welcomeCursorOn } = useTypewriterCycle(WELCOME_WORDS);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,8 +90,8 @@ export default function FlatSetupScreen() {
       {view === "choice" && (
         <>
           <Text style={styles.title}>
-            {welcomeText}
-            <Text style={[styles.titleCursor, { opacity: welcomeCursorOn ? 1 : 0 }]}>▌</Text>
+            Welcome!
+            <Text style={[styles.titleCursor, { opacity: 1 ? 1 : 0 }]}>▌</Text>
           </Text>
           <Text style={styles.subtitle}>Create a new flat, or join one with a code.</Text>
           <Pressable style={styles.primaryButton} onPress={() => setView("create")}>

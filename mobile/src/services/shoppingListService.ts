@@ -57,3 +57,9 @@ export const setShoppingListItemPurchased = (flatId: string, itemId: string, pur
 
 export const deleteShoppingListItem = (flatId: string, itemId: string) =>
   apiFetch<{ success: true }>(`/flats/${flatId}/shopping-list-items/${itemId}`, { method: "DELETE" });
+
+export const clearShoppingList = (flatId: string, listId?: string) =>
+  apiFetch<{ success: true }>(`/flats/${flatId}/shopping-list-items/clear`, {
+    method: "POST",
+    body: JSON.stringify({ listId }),
+  });

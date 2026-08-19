@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import type { AppEnv } from "./types";
+import type { AppEnv, Bindings } from "./types";
 import { HttpError } from "./types";
 
 import authRoutes from "./routes/auth";
@@ -16,6 +16,7 @@ import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
 import eventsRoutes from "./routes/events";
 import legalRoutes from "./routes/legal";
+import { runChoreDigests } from "./lib/choreDigest";
 
 const app = new Hono<AppEnv>();
 
@@ -57,4 +58,12 @@ app.route("/flats/:flatId/shopping-lists", shoppingListsRoutes);
 app.route("/flats/:flatId/settlements", settlementsRoutes);
 app.route("/flats/:flatId/events", eventsRoutes);
 
-export default app;
+// The cron fires hourly; runChoreDigests decides which firing is the morning
+// one in the flat's timezone and returns immediately for the other 23. See
+// lib/choreDigest.ts for why it isn't three fixed UTC schedules instead.
+export default {
+  fetch: app.fetch,
+  scheduled(event, env, ctx) {
+    ctx.waitUntil(runChoreDigests(env, new Date(event.scheduledTime)));
+  },
+} satisfies ExportedHandler<Bindings>;

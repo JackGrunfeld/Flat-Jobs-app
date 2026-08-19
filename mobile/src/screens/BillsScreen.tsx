@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
+import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
@@ -9,7 +9,7 @@ import * as shoppingService from "../services/shoppingService";
 import * as settlementsService from "../services/settlementsService";
 import SettleUpModal from "../components/SettleUpModal";
 import AddExpenseModal, { type NewExpense } from "../components/AddExpenseModal";
-import SettingsButton from "../components/SettingsButton";
+import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
 import RevealTile from "../components/RevealTile";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTheme } from "../context/ThemeContext";
@@ -30,9 +30,6 @@ const formatAbs = (cents: number) => formatMoney(Math.abs(cents));
 // Matches the chores roster card, so a flatmate's block is the same object on
 // both tabs — one header tall collapsed, expanding in place when tapped.
 const CARD_HEADER_HEIGHT = 72;
-// Past this many expense chips the row trails off rather than shrinking every
-// chip until none of them is readable. Same rule as the chore chips.
-const MAX_ITEM_CHIPS = 3;
 // Face pile on the summary card, and how far each disc slides under the one
 // before it.
 const FACE = 28;
@@ -52,18 +49,6 @@ type Position = {
   /** The expenses the two of you actually share, newest first. */
   shared: ShoppingItem[];
 };
-
-// The pill that heads a card — a category/status word in a rounded recess,
-// exactly as the dashboard tiles wear it. It's the card's classification
-// rather than its number, which is what lets the amount below be the value
-// alone.
-function Pill({ text, fg, styles }: { text: string; fg: string; styles: Styles }) {
-  return (
-    <View style={[styles.pill, { backgroundColor: withAlpha(fg, 0.16) }]}>
-      <Text style={[styles.pillText, { color: fg }]}>{text}</Text>
-    </View>
-  );
-}
 
 // Colour+initials disc. Falls back to the card's own foreground when a
 // flatmate hasn't picked a colour yet, so it's never an invisible circle.
@@ -108,6 +93,9 @@ export default function BillsScreen() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [settleTarget, setSettleTarget] = useState<Balance | null>(null);
+  // Whose reminder is in flight, so the button can say so and no one can send
+  // three by tapping three times.
+  const [remindingId, setRemindingId] = useState<string | null>(null);
   const [addVisible, setAddVisible] = useState(false);
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   // Collapsed by default: who owes what is what the tab is for, and the full
@@ -232,13 +220,44 @@ export default function BillsScreen() {
     await load();
   };
 
+  // Nudging someone is a message sent on your behalf, so it says what it did.
+  // The call used to be fired without a catch or any feedback: a failure came
+  // out as an unhandled rejection and the button looked identical whether the
+  // push landed, bounced, or never left.
+  const remindDebtor = async (position: Position) => {
+    if (remindingId) return;
+    setRemindingId(position.userId);
+    try {
+      const { delivered } = await settlementsService.remindDebtor(userFlat.id, {
+        toUserId: position.userId,
+        amountCents: position.netCents,
+      });
+      if (delivered > 0) {
+        Alert.alert("Reminder sent", `${position.displayName} has been nudged about ${formatAbs(position.netCents)}.`);
+      } else {
+        Alert.alert(
+          "Couldn't reach them",
+          `${position.displayName} doesn't have notifications turned on, so nothing was delivered.`,
+        );
+      }
+    } catch (err) {
+      console.warn("Failed to send reminder", err);
+      Alert.alert("Couldn't send reminder", err instanceof Error ? err.message : "Please try again.");
+    } finally {
+      setRemindingId(null);
+    }
+  };
+
   // The headline value and its caption. Whichever direction is the larger sum
   // leads — that's the one you'd act on.
   const heroFg = onColor(CARD_TONES.indigo);
   const owingOut = summary.owe >= summary.owed;
   const heroValue =
-    summary.owe === 0 && summary.owed === 0 ? "$0.00" : formatMoney(owingOut ? summary.owe : summary.owed);
-  const heroPill = summary.owe === 0 && summary.owed === 0 ? "Settled" : owingOut ? "You owe" : "You're owed";
+    summary.owe === 0 && summary.owed === 0
+      ? "All settled up"
+      : owingOut
+        ? `You owe ${formatMoney(summary.owe)}`
+        : `You're owed ${formatMoney(summary.owed)}`;
   const heroCaption =
     summary.owe === 0 && summary.owed === 0
       ? "Squeaky clean — nothing outstanding"
@@ -253,7 +272,7 @@ export default function BillsScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
-        style={[styles.container, { paddingTop: insets.top + 16 }]}
+        style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}
         contentContainerStyle={{ paddingBottom: tabBarSpace }}
       >
         <Text style={styles.pageTitle}>Bills</Text>
@@ -264,7 +283,6 @@ export default function BillsScreen() {
         <RevealTile delay={0}>
           <View style={[styles.heroCard, { backgroundColor: CARD_TONES.indigo }]}>
             <View style={styles.heroTopRow}>
-              <Pill text={heroPill} fg={heroFg} styles={styles} />
               <View style={styles.facePile}>
                 {payerFaces.faces.map((member, i) => (
                   <View
@@ -310,10 +328,6 @@ export default function BillsScreen() {
           const ink = inkFor(background);
           const iOwe = position.netCents < 0;
           const hasDetail = position.shared.length > 0;
-          // Each shared expense is its own outlined chip on one line — the row
-          // clips rather than wraps, so every card keeps the same height.
-          const chipNames = position.shared.slice(0, MAX_ITEM_CHIPS).map((e) => e.name);
-          const truncated = position.shared.length > chipNames.length;
 
           return (
             <RevealTile key={position.userId} delay={60 + index * 60}>
@@ -331,35 +345,15 @@ export default function BillsScreen() {
                     <Text style={[styles.cardName, { color: ink.strong }]} numberOfLines={1}>
                       {position.displayName}
                     </Text>
-                    <View style={styles.chipRow}>
-                      <View style={[styles.chip, { borderColor: ink.body }]}>
-                        <Text style={[styles.chipText, { color: ink.body }]} numberOfLines={1}>
-                          {iOwe ? "You owe" : "Owes you"}
-                        </Text>
-                      </View>
-                      {chipNames.map((name) => (
-                        <View key={name} style={[styles.chip, { borderColor: ink.body }]}>
-                          <Text style={[styles.chipText, { color: ink.body }]} numberOfLines={1}>
-                            {name}
-                          </Text>
-                        </View>
-                      ))}
-                      {truncated && <Text style={[styles.chipOverflow, { color: ink.muted }]}>…</Text>}
-                    </View>
+                    <Text style={[styles.cardSubtitle, { color: ink.body }]} numberOfLines={1}>
+                      {iOwe
+                        ? `You owe ${formatAbs(position.netCents)}`
+                        : `Owes you ${formatAbs(position.netCents)}`}
+                    </Text>
                   </View>
 
                   <View style={styles.cardAmountBlock}>
-                    <Text
-                      style={[styles.cardAmount, { color: ink.strong }]}
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.7}
-                    >
-                      {formatAbs(position.netCents)}
-                    </Text>
-                    {/* Only the person who owes can clear it, so the button
-                        only exists on the cards where it means something. */}
-                    {iOwe && (
+                    {iOwe ? (
                       <Pressable
                         hitSlop={8}
                         onPress={() =>
@@ -372,6 +366,24 @@ export default function BillsScreen() {
                         style={[styles.settleButton, { backgroundColor: ink.strong }]}
                       >
                         <Text style={[styles.settleButtonText, { color: ink.onStrong }]}>Settle up</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable
+                        hitSlop={8}
+                        onPress={() => remindDebtor(position)}
+                        // One nudge at a time: the button sends on every tap,
+                        // and each one is a real notification on someone
+                        // else's phone.
+                        disabled={remindingId !== null}
+                        style={[
+                          styles.settleButton,
+                          { backgroundColor: ink.strong },
+                          remindingId !== null && styles.settleButtonBusy,
+                        ]}
+                      >
+                        <Text style={[styles.settleButtonText, { color: ink.onStrong }]}>
+                          {remindingId === position.userId ? "Sending…" : "Remind"}
+                        </Text>
                       </Pressable>
                     )}
                   </View>
@@ -496,7 +508,13 @@ function createStyles(colors: ThemeColors) {
       fontFamily: fonts.regular,
       fontSize: 28,
       letterSpacing: -0.7,
+      // Explicit, and the same 31pt the home greeting uses: the line box is
+      // what fixes where the title sits, so every tab's title lands on the
+      // same height and the settings gear centres on all of them alike.
+      lineHeight: 31,
       color: colors.textMuted,
+      // Clears the gear button pinned in the corner.
+      paddingRight: 36,
       marginBottom: 16,
     },
     stats: {
@@ -531,9 +549,6 @@ function createStyles(colors: ThemeColors) {
     heroValue: { fontFamily: fonts.display, fontSize: 40, lineHeight: 46, letterSpacing: -1.2, marginTop: 12 },
     heroCaption: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, marginTop: 4 },
 
-    pill: { alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-    pillText: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.6 },
-
     avatar: { alignItems: "center", justifyContent: "center" },
     avatarText: { fontFamily: fonts.bold },
     facePile: { flexDirection: "row", alignItems: "center" },
@@ -554,24 +569,10 @@ function createStyles(colors: ThemeColors) {
     },
     cardInfo: { flex: 1 },
     cardName: { fontFamily: fonts.display, fontSize: 26, textTransform: "uppercase", letterSpacing: -1 },
-    chipRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      flexWrap: "nowrap",
-      overflow: "hidden",
-      gap: 6,
-      marginTop: 4,
-    },
-    // Outline only: the card is already a solid block of colour, so a filled
-    // chip on top of it would read as a second, competing surface.
-    chip: { flexShrink: 1, borderWidth: 1.5, borderRadius: 6, paddingVertical: 2, paddingHorizontal: 7 },
-    chipText: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: -0.3 },
-    chipOverflow: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 1 },
-    // The amount takes the place the chores card gives its tick box — the same
-    // corner, so the eye lands on the card's value without relearning it.
-    cardAmountBlock: { alignItems: "flex-end", gap: 6, maxWidth: 132 },
-    cardAmount: { fontFamily: fonts.display, fontSize: 24, lineHeight: 28, letterSpacing: -0.8 },
+    cardSubtitle: { fontFamily: fonts.bold, fontSize: 13, letterSpacing: -0.3, marginTop: 2 },
+    cardAmountBlock: { alignItems: "flex-end", gap: 6 },
     settleButton: { borderRadius: 8, paddingVertical: 6, paddingHorizontal: 12 },
+    settleButtonBusy: { opacity: 0.5 },
     settleButtonText: { fontFamily: fonts.bold, fontSize: 11, letterSpacing: 0.4 },
 
     // ── Drop-down detail ──
@@ -614,8 +615,6 @@ function createStyles(colors: ThemeColors) {
     },
     manageCard: {
       backgroundColor: colors.surface,
-      borderWidth: 1.5,
-      borderColor: colors.border,
       borderRadius: 12,
       marginBottom: 8,
     },

@@ -6,6 +6,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import type { ThemeColors } from "../theme/colors";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 
@@ -16,6 +17,13 @@ import type { RootStackParamList } from "../navigation/AppNavigator";
 type Nav = CompositeNavigationProp<BottomTabNavigationProp<MainTabParamList>, NativeStackNavigationProp<RootStackParamList>>;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+// Every tab sets its title on a 31pt line starting 6pt below the safe area,
+// so the line's centre is at insets.top + 21.5. The button is 32 tall, which
+// puts its top half that height above the centre — that's what keeps the gear
+// optically inline with the title instead of riding above it.
+export const HEADER_TITLE_TOP = 6;
+const TOP_OFFSET = (insetTop: number) => insetTop + HEADER_TITLE_TOP + 31 / 2 - 32 / 2;
 
 type Props = {
   // Lets a screen animate the button in and out — HomeScreen keeps it out of
@@ -38,7 +46,7 @@ export default function SettingsButton({ style, pointerEvents }: Props) {
     <AnimatedPressable
       style={[
         styles.button,
-        { top: insets.top + 12, backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+        { top: TOP_OFFSET(insets.top), backgroundColor: colors.surfaceAlt },
         style,
       ]}
       pointerEvents={pointerEvents}
@@ -57,7 +65,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 10,
-    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 10,

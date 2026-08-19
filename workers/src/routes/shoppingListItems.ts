@@ -3,6 +3,7 @@ import type { AppEnv } from "../types";
 import { HttpError, newId, now } from "../types";
 import { requireAuth } from "../middleware/auth";
 import { requireFlatMembership } from "../middleware/flatMembership";
+import { notifyUsers } from "../lib/pushNotify";
 import { defaultListId } from "./shoppingLists";
 
 // Mounted in index.ts at /flats/:flatId/shopping-list-items. A plain shared
@@ -115,6 +116,45 @@ shoppingListItems.post("/", async (c) => {
     .run();
 
   return c.json({ item: await fetchItem(c.env.DB, flatId, itemId), duplicate: false }, 201);
+});
+
+shoppingListItems.post("/clear", async (c) => {
+  const flatId = c.req.param("flatId")!;
+  const userId = c.get("userId");
+  const { listId } = await c.req.json<{ listId?: string }>().catch(() => ({ listId: undefined }));
+
+  // Delete every item on the flat's list (or just one category when scoped).
+  if (listId) {
+    await c.env.DB.prepare("DELETE FROM shopping_list_items WHERE flat_id = ? AND list_id = ?")
+      .bind(flatId, listId)
+      .run();
+  } else {
+    await c.env.DB.prepare("DELETE FROM shopping_list_items WHERE flat_id = ?")
+      .bind(flatId)
+      .run();
+  }
+
+  const user = await c.env.DB.prepare("SELECT display_name FROM users WHERE id = ?")
+    .bind(userId)
+    .first<{ display_name: string }>();
+
+  const { results: members } = await c.env.DB.prepare(
+    "SELECT user_id FROM flat_members WHERE flat_id = ?",
+  )
+    .bind(flatId)
+    .all<{ user_id: string }>();
+
+  const memberIds = (members ?? []).map((m) => m.user_id).filter((id) => id !== userId);
+
+  await notifyUsers(
+    c.env.DB,
+    memberIds,
+    "Shopping list cleared",
+    `${user?.display_name || "A flatmate"} has completed the shopping list`,
+    { type: "shopping-list-cleared", flatId },
+  );
+
+  return c.json({ success: true });
 });
 
 shoppingListItems.post("/:itemId/upvote", async (c) => {

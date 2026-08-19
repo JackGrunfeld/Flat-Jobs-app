@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
@@ -130,6 +130,12 @@ export default function AuthScreen() {
   const [cycleWordChars, setCycleWordChars] = useState(CYCLE_WORDS[0].length);
   const [cyclePhase, setCyclePhase] = useState<"pause" | "deleting" | "typing">("pause");
   const typingDone = visibleChars >= SUBTITLE_LENGTH;
+
+  // Store the real email from Apple's first authorization to avoid "Hide My Email"
+  // relay on subsequent sign-ins. Apple may provide a privacy relay address on later
+  // sign-ins for the same user, which would break the flat inviting system that uses
+  // email invites. We preserve the original real email so the inviting system works.
+  const appleRealEmailRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typingDone) return;
@@ -266,7 +272,16 @@ export default function AuthScreen() {
       });
       if (!credential.identityToken) throw new Error("Apple sign-in returned no identity token");
       identityToken = credential.identityToken;
-      appleEmail = credential.email ?? null;
+      
+      // On first authorization, Apple provides the real email. On subsequent
+      // sign-ins for the same user, Apple may provide a "Hide My Email" relay.
+      // Preserve the real email from the first auth attempt so the flat inviting
+      // system (which uses email invites) continues to work.
+      if (credential.email && !appleRealEmailRef.current) {
+        appleRealEmailRef.current = credential.email;
+      }
+      appleEmail = appleRealEmailRef.current ?? credential.email ?? null;
+      
       appleName =
         [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(" ") || null;
     } catch (err: any) {

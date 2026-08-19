@@ -105,6 +105,40 @@ settlements.get("/", async (c) => {
   });
 });
 
+settlements.post("/remind", async (c) => {
+  const flatId = c.req.param("flatId");
+  const fromUserId = c.get("userId");
+  const { toUserId, amountCents } = await c.req.json<{
+    toUserId?: string;
+    amountCents?: number;
+  }>();
+  if (!toUserId || !Number.isInteger(amountCents) || amountCents! <= 0) {
+    throw new HttpError(400, "toUserId and a positive integer amountCents are required");
+  }
+  const recipientIsMember = await c.env.DB.prepare(
+    "SELECT 1 FROM flat_members WHERE flat_id = ? AND user_id = ?",
+  )
+    .bind(flatId, toUserId)
+    .first();
+  if (!recipientIsMember) throw new HttpError(400, "toUserId is not a member of this flat");
+
+  const creditor = await c.env.DB.prepare("SELECT display_name FROM users WHERE id = ?").bind(fromUserId).first<{ display_name: string }>();
+  const amountDisplay = (amountCents! / 100).toFixed(2);
+  // How many of the debtor's devices took the push. Passed back so the app can
+  // tell "sent" apart from "they have no device registered / notifications
+  // off" — before, both came back as success and the button looked like it had
+  // done something either way.
+  const delivered = await notifyUser(
+    c.env.DB,
+    toUserId,
+    "Payment reminder",
+    `${creditor?.display_name || "A flatmate"} reminded you that you owe $${amountDisplay}`,
+    { type: "settlement-reminder", flatId },
+  );
+
+  return c.json({ success: delivered > 0, delivered });
+});
+
 settlements.post("/", async (c) => {
   const flatId = c.req.param("flatId");
   const fromUserId = c.get("userId");

@@ -6,7 +6,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import * as choresService from "../services/choresService";
 import * as completionsService from "../services/completionsService";
-import { fireCompletionAlert } from "../notifications/completionAlerts";
 import { assignChores, getDayIndex, getPeriodIndex } from "../utils/rosterHelpers";
 import { buildDisplayNames } from "../utils/displayNames";
 import { useTheme } from "../context/ThemeContext";
@@ -14,7 +13,8 @@ import type { ThemeColors } from "../theme/colors";
 import { inkFor } from "../theme/cardInk";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
-import SettingsButton from "../components/SettingsButton";
+import RevealTile from "../components/RevealTile";
+import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
 import ChoreFormModal, { FREQUENCIES, type ChoreFormValues } from "../components/ChoreFormModal";
 import DayStrip from "../components/DayStrip";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
@@ -109,6 +109,12 @@ function PieFill({
 // Week navigator + one block-coloured card per flatmate, tapped to drop down
 // the individual chores behind it. Flat config (name/code, flatmates,
 // invites, chore list editor) lives on the Settings tab.
+// The reveal cadence Home and Bills already use: one step between blocks,
+// and the stagger stops climbing after a few cards so a long roster doesn't
+// leave the last one waiting seconds to appear.
+const REVEAL_STEP = 60;
+const MAX_STAGGER = 6;
+
 export default function HouseScreen() {
   const insets = useSafeAreaInsets();
   // The tab bar floats over the page, so the last row needs
@@ -310,10 +316,6 @@ export default function HouseScreen() {
         }),
       ),
     );
-
-    if (nextDone && targets[0].assignedUserId === currentUser?.id) {
-      fireCompletionAlert(targets.map((t) => t.chore.name).join(", ")).catch(() => {});
-    }
   };
 
   if (!userFlat) return null;
@@ -321,18 +323,20 @@ export default function HouseScreen() {
   return (
     <View style={styles.root}>
       <ScrollView
-        style={[styles.container, { paddingTop: insets.top + 16 }]}
+        style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}
         contentContainerStyle={{ paddingBottom: tabBarSpace }}
       >
         <Text style={styles.pageTitle}>Chores</Text>
 
-        <DayStrip
-          selected={selectedDate}
-          today={today}
-          onSelect={setSelectedDate}
-          onPreview={setPreviewDate}
-          dotFor={dotFor}
-        />
+        <RevealTile delay={0}>
+          <DayStrip
+            selected={selectedDate}
+            today={today}
+            onSelect={setSelectedDate}
+            onPreview={setPreviewDate}
+            dotFor={dotFor}
+          />
+        </RevealTile>
 
         {/* Names the day in full. Only the daily chores actually change from
             one tile to the next, so without this, tapping along a week looks
@@ -342,7 +346,7 @@ export default function HouseScreen() {
           {doneCount}/{assignmentsForDay.length} done
         </Text>
 
-        {rosterCards.map((card) => {
+        {rosterCards.map((card, index) => {
           const offDuty = card.items.length === 0;
           const expanded = expandedUserId === card.member.userId;
           const background = card.member.color ?? colors.accent;
@@ -357,87 +361,119 @@ export default function HouseScreen() {
           const showLoneDescription = card.main.length === 1 && card.monthly.length === 0;
 
           return (
-            <Pressable
-              key={card.member.userId}
-              style={({ pressed }) => [
-                styles.choreCard,
-                { backgroundColor: background },
-                pressed && !offDuty && styles.choreCardPressed,
-              ]}
-              onPress={() => !offDuty && setExpandedUserId(expanded ? null : card.member.userId)}
-              disabled={offDuty}
-            >
-              <View style={styles.cardHeaderRow}>
-                <View style={styles.choreInfo}>
-                  <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
-                    {card.displayName}
-                  </Text>
-                  <View style={styles.choreTaskRow}>
-                    {shownNames.map((name) => (
-                      <View key={name} style={[styles.taskChip, { borderColor: ink.body }]}>
-                        <Text style={[styles.taskChipText, { color: ink.body }]} numberOfLines={1}>
-                          {name}
-                        </Text>
-                      </View>
-                    ))}
-                    {truncated && <Text style={[styles.taskOverflow, { color: ink.muted }]}>…</Text>}
-                    {card.monthly.length > 0 && (
-                      <Text style={[styles.monthlyCardBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
-                        M
-                      </Text>
-                    )}
-                  </View>
-                </View>
-
-                {/* One job: the drop-down only carries its description, so the
-                    box stays the way to tick it. Several: it's a read-out of
-                    how many are done, ticked off individually below, because a
-                    single tap clearing four jobs at once was too easy to hit. */}
-                {card.main.length === 1 && (
-                  <Pressable
-                    onPress={() => setDone(card.main, !card.allMainDone)}
-                    hitSlop={10}
-                    style={[
-                      styles.checkbox,
-                      { borderColor: ink.strong },
-                      card.allMainDone && { backgroundColor: ink.strong },
-                    ]}
-                  >
-                    {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                  </Pressable>
-                )}
-
-                {card.main.length > 1 && (
-                  <View style={[styles.checkbox, { borderColor: ink.strong }]}>
-                    <PieFill
-                      styles={styles}
-                      progress={card.mainDone / card.main.length}
-                      color={ink.strong}
-                    />
-                    {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                  </View>
-                )}
-              </View>
-
-              {expanded && (
-                <View style={[styles.details, { borderTopColor: ink.hairline }]}>
-                  {showLoneDescription && (
-                    <Text style={[styles.detailText, { color: ink.body }]}>
-                      {card.main[0].chore.description?.trim() || "No description added."}
+            <RevealTile key={card.member.userId} delay={REVEAL_STEP * (1 + Math.min(index, MAX_STAGGER))}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.choreCard,
+                  { backgroundColor: background },
+                  pressed && !offDuty && styles.choreCardPressed,
+                ]}
+                onPress={() => !offDuty && setExpandedUserId(expanded ? null : card.member.userId)}
+                disabled={offDuty}
+              >
+                <View style={styles.cardHeaderRow}>
+                  <View style={styles.choreInfo}>
+                    <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
+                      {card.displayName}
                     </Text>
+                    <View style={styles.choreTaskRow}>
+                      {shownNames.map((name) => (
+                        <View key={name} style={[styles.taskChip, { borderColor: ink.body }]}>
+                          <Text style={[styles.taskChipText, { color: ink.body }]} numberOfLines={1}>
+                            {name}
+                          </Text>
+                        </View>
+                      ))}
+                      {truncated && <Text style={[styles.taskOverflow, { color: ink.muted }]}>…</Text>}
+                      {card.monthly.length > 0 && (
+                        <Text style={[styles.monthlyCardBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                          M
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* One job: the drop-down only carries its description, so the
+                      box stays the way to tick it. Several: it's a read-out of
+                      how many are done, ticked off individually below, because a
+                      single tap clearing four jobs at once was too easy to hit. */}
+                  {card.main.length === 1 && (
+                    <Pressable
+                      onPress={() => setDone(card.main, !card.allMainDone)}
+                      hitSlop={10}
+                      style={[
+                        styles.checkbox,
+                        { borderColor: ink.strong },
+                        card.allMainDone && { backgroundColor: ink.strong },
+                      ]}
+                    >
+                      {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                    </Pressable>
                   )}
 
-                  {!showLoneDescription &&
-                    card.main.map((item, i) => (
+                  {card.main.length > 1 && (
+                    <View style={[styles.checkbox, { borderColor: ink.strong }]}>
+                      <PieFill
+                        styles={styles}
+                        progress={card.mainDone / card.main.length}
+                        color={ink.strong}
+                      />
+                      {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                    </View>
+                  )}
+                </View>
+
+                {expanded && (
+                  <View style={[styles.details, { borderTopColor: ink.hairline }]}>
+                    {showLoneDescription && (
+                      <Text style={[styles.detailText, { color: ink.body }]}>
+                        {card.main[0].chore.description?.trim() || "No description added."}
+                      </Text>
+                    )}
+
+                    {!showLoneDescription &&
+                      card.main.map((item, i) => (
+                        <View
+                          key={item.chore.id}
+                          style={[
+                            styles.subTaskRow,
+                            { borderBottomColor: ink.hairline },
+                            i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast,
+                          ]}
+                        >
+                          <View style={styles.subTaskInfo}>
+                            <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
+                            {!!item.chore.description?.trim() && (
+                              <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
+                            )}
+                          </View>
+                          <Pressable
+                            onPress={() => setDone([item], !item.done)}
+                            hitSlop={10}
+                            style={[
+                              styles.checkbox,
+                              { borderColor: ink.strong },
+                              item.done && { backgroundColor: ink.strong },
+                            ]}
+                          >
+                            {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                          </Pressable>
+                        </View>
+                      ))}
+
+                    {card.monthly.map((item, i) => (
                       <View
                         key={item.chore.id}
                         style={[
                           styles.subTaskRow,
                           { borderBottomColor: ink.hairline },
-                          i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast,
+                          i === card.monthly.length - 1 && styles.subTaskRowLast,
                         ]}
                       >
                         <View style={styles.subTaskInfo}>
+                          <Text style={[styles.monthlyBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                            Monthly
+                          </Text>
                           <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
                           {!!item.chore.description?.trim() && (
                             <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
@@ -456,48 +492,17 @@ export default function HouseScreen() {
                         </Pressable>
                       </View>
                     ))}
-
-                  {card.monthly.map((item, i) => (
-                    <View
-                      key={item.chore.id}
-                      style={[
-                        styles.subTaskRow,
-                        { borderBottomColor: ink.hairline },
-                        i === card.monthly.length - 1 && styles.subTaskRowLast,
-                      ]}
-                    >
-                      <View style={styles.subTaskInfo}>
-                        <Text style={[styles.monthlyBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
-                          Monthly
-                        </Text>
-                        <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
-                        {!!item.chore.description?.trim() && (
-                          <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
-                        )}
-                      </View>
-                      <Pressable
-                        onPress={() => setDone([item], !item.done)}
-                        hitSlop={10}
-                        style={[
-                          styles.checkbox,
-                          { borderColor: ink.strong },
-                          item.done && { backgroundColor: ink.strong },
-                        ]}
-                      >
-                        {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                      </Pressable>
-                    </View>
-                  ))}
-                </View>
-              )}
-            </Pressable>
+                  </View>
+                )}
+              </Pressable>
+            </RevealTile>
           );
         })}
 
         {chores.length === 0 && <Text style={styles.empty}>No chores yet — tap + to add one.</Text>}
 
         {choresByFrequency.length > 0 && (
-          <>
+          <RevealTile delay={REVEAL_STEP * (2 + Math.min(rosterCards.length, MAX_STAGGER))}>
             <Pressable
               style={styles.manageTitleRow}
               onPress={() => setShowAllChores((open) => !open)}
@@ -572,7 +577,7 @@ export default function HouseScreen() {
                   })}
                 </View>
               ))}
-          </>
+          </RevealTile>
         )}
       </ScrollView>
 
@@ -596,7 +601,13 @@ function createStyles(colors: ThemeColors) {
       fontFamily: fonts.regular,
       fontSize: 28,
       letterSpacing: -0.7,
+      // Explicit, and the same 31pt the home greeting uses: the line box is
+      // what fixes where the title sits, so every tab's title lands on the
+      // same height and the settings gear centres on all of them alike.
+      lineHeight: 31,
       color: colors.textMuted,
+      // Clears the gear button pinned in the corner.
+      paddingRight: 36,
       marginBottom: 16,
     },
     stats: {

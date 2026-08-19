@@ -19,7 +19,7 @@ import { lockTabSwipe, unlockTabSwipe } from "../navigation/tabSwipeLock";
 // than in a separator, so STEP stays exactly one tile's pitch.
 const TILE_WIDTH = 54;
 const TILE_HEIGHT = 82;
-const TILE_GAP = 8;
+const TILE_GAP = 14;
 const STEP = TILE_WIDTH + TILE_GAP;
 
 // Days either side of today. Long enough that the wheel can be rolled hard
@@ -28,27 +28,86 @@ const STEP = TILE_WIDTH + TILE_GAP;
 const RANGE_DAYS = 180;
 
 // The row is the front of a drum standing on end, turning about a vertical
-// axis this far behind the screen. A tile's distance from the middle is how
-// far round the drum it has travelled, which is what it's turned by — so the
-// tiles either side face away from you rather than tipping over a hump.
-//
-// The radius is the dial for how tightly the drum curves: smaller turns the
-// tiles harder over a shorter distance.
-const WHEEL_RADIUS = 240;
-// Viewing distance. Lower is a wider lens — the turn gets more dramatic and
-// the far edge of a tile shrinks harder as it goes back.
-const WHEEL_PERSPECTIVE = 600;
-// How far out the drum keeps curving. Past this a tile is clamped, though by
-// then it's edge-on and faded to almost nothing anyway.
-const WHEEL_SPAN = STEP * 4;
+// axis behind the screen. A tile's distance from the middle is arc length
+// along that drum, so it is turned by however far round it has travelled —
+// the tiles either side face away from you rather than tipping over a hump.
+
+// How far round a tile is allowed to get before the drum stops curving. Short
+// of edge-on, and deliberately: a tile is a flat chord across the circle, not
+// a curved segment of it, so as two neighbours approach edge-on their chords
+// run into one another and the faces visibly overlap. Stopping the turn here
+// keeps every pair clear of the next all the way to the rim.
+const MAX_TURN = (55 * Math.PI) / 180;
+// Viewing distance — a long lens. It has to be long, because the perspective
+// divide shrinks a tile's *position* faster than it shrinks the tile itself,
+// and the difference comes out of the 14px of pitch the row has spare. A
+// short lens spends that slack before the tiles have finished turning, and
+// they overlap near the rim however tight or loose the drum is.
+const WHEEL_PERSPECTIVE = 1600;
 // Sampled across the span rather than interpolated end to end: the drum is
 // made of a sine and a cosine, and interpolation between samples is
-// straight-line, so it takes enough of them that the flats don't show.
-const WHEEL_SAMPLES = [1, 0.75, 0.5, 0.25, 0, -0.25, -0.5, -0.75, -1].map((f) => f * WHEEL_SPAN);
+// straight-line, so it takes enough of them that the flats don't show. The
+// count is what it is because the tiles bunch up towards the rim, where a
+// coarse sampling reads as them jumping between positions.
+const WHEEL_SAMPLE_COUNT = 17;
+
 const degrees = (radians: number) => (radians * 180) / Math.PI;
-// RN has no translateZ, so the depth a tile picks up as it turns away is drawn
-// as the shrink that depth would cause instead.
-const depthScale = (depth: number) => WHEEL_PERSPECTIVE / (WHEEL_PERSPECTIVE + depth);
+
+type Wheel = {
+  /** Arc distances the interpolations are sampled at, furthest first. */
+  samples: number[];
+  /** How far round the drum, unsigned and clamped at MAX_TURN. */
+  angle: (d: number) => number;
+  /** Projected x, relative to the flat position the row laid the tile out at. */
+  shift: (d: number) => number;
+  scale: (d: number) => number;
+  opacity: (d: number) => number;
+};
+
+// The drum is sized to the row it is given rather than to a constant, so its
+// widest point lands exactly on the edge of the strip — and the strip is the
+// width of the chore cards below it, so wheel and cards line up.
+//
+// Solving for the radius rather than picking one: a tile at MAX_TURN sits at
+// R·sin(MAX_TURN), divided down by the depth it has gone back, and that has
+// to come out at half the row's width. Rearranged for R, that is the
+// expression below.
+function buildWheel(width: number): Wheel {
+  const half = Math.max(width, 1) / 2;
+  const P = WHEEL_PERSPECTIVE;
+  const cosMax = Math.cos(MAX_TURN);
+  const denominator = P * Math.sin(MAX_TURN) - half * (1 - cosMax);
+  // Only goes non-positive for a row wider than the lens is long, which the
+  // fallback covers rather than letting it yield a negative radius.
+  const radius = denominator > 0 ? (half * P) / denominator : half;
+  const span = radius * MAX_TURN;
+
+  const angle = (d: number) => Math.min(Math.abs(d), span) / radius;
+  // RN has no translateZ, so the depth a tile picks up as it turns away is
+  // drawn as the shrink that depth would cause instead.
+  const scale = (d: number) => P / (P + radius * (1 - Math.cos(angle(d))));
+  // The same divide has to be applied to *where* a tile is, not just to how
+  // big it is. Projecting the size without projecting the position is what
+  // makes a drum read as a flat fan of turned cards: the tiles shrink as
+  // though receding, but stay out at the width they had when they were flat.
+  const x = (d: number) => Math.sign(d) * radius * Math.sin(angle(d)) * scale(d);
+
+  return {
+    samples: Array.from(
+      { length: WHEEL_SAMPLE_COUNT },
+      (_, i) => span * (1 - (2 * i) / (WHEEL_SAMPLE_COUNT - 1)),
+    ),
+    angle,
+    scale,
+    shift: (d) => x(d) - d,
+    // Goes out with the turn rather than with raw distance, and normalised so
+    // it reaches nothing exactly at MAX_TURN — which is where the geometry
+    // clamps. A tile frozen at the rim is therefore already invisible, so the
+    // clamp never shows as a pile-up. The power lifts the middle of the range
+    // so the days just either side of the selection stay readable.
+    opacity: (d) => Math.max((Math.cos(angle(d)) - cosMax) / (1 - cosMax), 0) ** 0.75,
+  };
+}
 
 // Today reads bigger than the rest of the row. Scale rather than a wider box,
 // so the pitch stays uniform and `getItemLayout` keeps working.
@@ -113,6 +172,7 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
   // makes a day's centred scroll offset exactly STEP * index — which in turn
   // is why `snapToInterval` lands on days rather than somewhere between them.
   const sidePad = width > 0 ? (width - TILE_WIDTH) / 2 : 0;
+  const wheel = useMemo(() => buildWheel(width), [width]);
   const offsetForIndex = useCallback((index: number) => STEP * index, []);
 
   useEffect(() => {
@@ -168,7 +228,7 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
       // makes every one of these a plain interpolation of `scrollX`.
       // Descending distance gives ascending offsets, which is the order
       // `interpolate` requires of its input range.
-      const inputRange = WHEEL_SAMPLES.map((d) => STEP * index - d);
+      const inputRange = wheel.samples.map((d) => STEP * index - d);
       const clamp = { inputRange, extrapolate: "clamp" as const };
 
       // How far this tile is *the* middle one, 1 at dead centre and 0 a whole
@@ -216,7 +276,7 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
             {
               opacity: scrollX.interpolate({
                 ...clamp,
-                outputRange: WHEEL_SAMPLES.map((d) => 1 - Math.min(Math.abs(d) / WHEEL_SPAN, 1) * 0.65),
+                outputRange: wheel.samples.map(wheel.opacity),
               }),
               transform: [
                 { perspective: WHEEL_PERSPECTIVE },
@@ -225,7 +285,7 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
                   // so each tile is pulled in to where its own arc puts it.
                   translateX: scrollX.interpolate({
                     ...clamp,
-                    outputRange: WHEEL_SAMPLES.map((d) => WHEEL_RADIUS * Math.sin(d / WHEEL_RADIUS) - d),
+                    outputRange: wheel.samples.map(wheel.shift),
                   }),
                 },
                 {
@@ -233,15 +293,13 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
                   // sends its outer edge away from you.
                   rotateY: scrollX.interpolate({
                     ...clamp,
-                    outputRange: WHEEL_SAMPLES.map((d) => `${degrees(d / WHEEL_RADIUS).toFixed(3)}deg`),
+                    outputRange: wheel.samples.map((d) => `${degrees(Math.sign(d) * wheel.angle(d)).toFixed(3)}deg`),
                   }),
                 },
                 {
                   scale: scrollX.interpolate({
                     ...clamp,
-                    outputRange: WHEEL_SAMPLES.map((d) =>
-                      depthScale(WHEEL_RADIUS * (1 - Math.cos(d / WHEEL_RADIUS))),
-                    ),
+                    outputRange: wheel.samples.map(wheel.scale),
                   }),
                 },
               ],
@@ -271,7 +329,7 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
         </Animated.View>
       );
     },
-    [colors, dotFor, onPreview, onSelect, scrollX, selected, styles, today],
+    [colors, dotFor, onSelect, scrollX, selected, styles, today, wheel],
   );
 
   const onWrapLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
@@ -340,11 +398,12 @@ export default function DayStrip({ selected, today, onSelect, onPreview, dotFor 
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-    // Bleeds to the screen edges so tiles turn away at the margins rather than
-    // stopping short of them. Fixed height because the list inside is mounted
+    // Left at the content width rather than bled past it: the drum is sized to
+    // whatever row it is given, so its widest point lands on this box's edge —
+    // and this box is the chore cards' width, so the two line up. Fixed height because the list inside is mounted
     // a frame late, and the page shouldn't jump when it arrives — with the
     // overhang added so today's larger tile has somewhere to grow into.
-    wrap: { marginHorizontal: -20, marginBottom: 10, height: TILE_HEIGHT + TODAY_OVERHANG * 2 },
+    wrap: { marginBottom: 10, height: TILE_HEIGHT + TODAY_OVERHANG * 2 },
     // Centres the slots in that taller row, so the slack sits evenly above and
     // below rather than all of it landing under the tiles.
     content: { alignItems: "center" },

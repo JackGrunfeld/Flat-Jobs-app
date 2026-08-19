@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
@@ -9,17 +9,38 @@ import ShoppingItemCard from "../components/ShoppingItemCard";
 import AddShoppingItemModal from "../components/AddShoppingItemModal";
 import ListCategoryBar from "../components/ListCategoryBar";
 import ListCategoryModal from "../components/ListCategoryModal";
-import SettingsButton from "../components/SettingsButton";
+import RevealTile from "../components/RevealTile";
+import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTheme } from "../context/ThemeContext";
-import type { ThemeColors } from "../theme/colors";
+import { CARD_TONES, type ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import type { FlatMember, ShoppingList, ShoppingListItem } from "../types";
 
 // The shared checklist as a stack of cards (avatar of whoever added it, name,
-// tick box). Adding is driven by the tab bar's centre "+", which this screen
+// tick box). Adding is driven by the tab bar's centre "+" which this screen
 // registers a handler for — there's no FAB of its own any more.
+// The dashboard's own card colours, reused as the list's fills so the two
+// screens read as one palette. Taken from CARD_TONES rather than copied, so
+// a change to the tiles carries through here.
+const ITEM_TONES = Object.values(CARD_TONES);
+
+// Which tone an item wears, from its id rather than its position: the list
+// re-sorts as things get ticked off, and a colour that changed underneath you
+// on every tap would read as a different item.
+function toneFor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return ITEM_TONES[hash % ITEM_TONES.length];
+}
+
+// Matches the cadence on Home, Bills and Chores: one step between blocks,
+// with the per-item stagger capped so a long list's last card doesn't wait
+// seconds to show up.
+const REVEAL_STEP = 60;
+const MAX_STAGGER = 6;
+
 export default function ShoppingScreen() {
   const insets = useSafeAreaInsets();
   // The tab bar floats over the page, so the last row needs
@@ -77,8 +98,6 @@ export default function ShoppingScreen() {
   useEffect(() => {
     loadItems();
   }, [loadItems]);
-
-  const itemsText = `There ${sortedItems.length === 1 ? "is" : "are"} ${sortedItems.length} item${sortedItems.length === 1 ? "" : "s"} in ${userFlat?.name ?? ""}'s ${activeList?.name ?? ""} list`;
 
   useRegisterAddAction("Shopping", () => setAddVisible(true));
 
@@ -184,43 +203,69 @@ export default function ShoppingScreen() {
     await shoppingListService.deleteShoppingListItem(userFlat.id, itemId);
   };
 
+  const clearList = () => {
+    if (!activeListId || sortedItems.length === 0) return;
+    Alert.alert(
+      "Clear shopping list?",
+      "This removes every item from the list and lets your flatmates know it's done.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear list",
+          style: "destructive",
+          onPress: async () => {
+            await shoppingListService.clearShoppingList(userFlat.id, activeListId);
+            setListItems([]);
+            setOpenItemId(null);
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={styles.root}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: tabBarSpace }}
+        contentContainerStyle={{ paddingTop: insets.top + HEADER_TITLE_TOP, paddingBottom: tabBarSpace }}
       >
         <Text style={styles.pageTitle}>Shopping List</Text>
 
-        <Text style={styles.nudge}>{itemsText}</Text>
-
-        <View style={styles.divider} />
-
-        <ListCategoryBar
-          lists={lists}
-          activeListId={activeListId}
-          onSelect={selectList}
-          onAdd={openNewListModal}
-          onEdit={openEditListModal}
-          onReorder={reorderLists}
-        />
+        <RevealTile delay={0}>
+          <ListCategoryBar
+            lists={lists}
+            activeListId={activeListId}
+            onSelect={selectList}
+            onAdd={openNewListModal}
+            onEdit={openEditListModal}
+            onReorder={reorderLists}
+          />
+        </RevealTile>
 
         {sortedItems.length === 0 && <Text style={styles.emptyText}>Nothing on this list yet.</Text>}
-        {sortedItems.map((item) => (
-          <ShoppingItemCard
-            key={item.id}
-            item={item}
-            addedBy={memberById.get(item.addedByUserId)}
-            upvoters={item.upvotedByUserIds.map((id) => memberById.get(id)).filter((m): m is FlatMember => !!m)}
-            upvoted={!!currentUser && item.upvotedByUserIds.includes(currentUser.id)}
-            open={openItemId === item.id}
-            onToggle={() => togglePurchased(item)}
-            onDelete={() => deleteListItem(item.id)}
-            onUpvote={() => toggleUpvote(item)}
-            onSwipeOpen={() => setOpenItemId(item.id)}
-            onSwipeClose={() => setOpenItemId((prev) => (prev === item.id ? null : prev))}
-          />
+        {sortedItems.map((item, index) => (
+          <RevealTile key={item.id} delay={REVEAL_STEP * (1 + Math.min(index, MAX_STAGGER))}>
+            <ShoppingItemCard
+              item={item}
+              tone={toneFor(item.id)}
+              addedBy={memberById.get(item.addedByUserId)}
+              upvoters={item.upvotedByUserIds.map((id) => memberById.get(id)).filter((m): m is FlatMember => !!m)}
+              upvoted={!!currentUser && item.upvotedByUserIds.includes(currentUser.id)}
+              open={openItemId === item.id}
+              onToggle={() => togglePurchased(item)}
+              onDelete={() => deleteListItem(item.id)}
+              onUpvote={() => toggleUpvote(item)}
+              onSwipeOpen={() => setOpenItemId(item.id)}
+              onSwipeClose={() => setOpenItemId((prev) => (prev === item.id ? null : prev))}
+            />
+          </RevealTile>
         ))}
+
+        {sortedItems.length > 0 && (
+          <Pressable style={styles.clearButton} onPress={clearList} hitSlop={8}>
+            <Text style={styles.clearButtonText}>Clear list</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <AddShoppingItemModal visible={addVisible} onClose={() => setAddVisible(false)} onAdd={addListItem} />
@@ -239,34 +284,48 @@ export default function ShoppingScreen() {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
-  pageTitle: {
-    fontFamily: fonts.regular,
-    fontSize: 28,
-    letterSpacing: -0.7,
-    color: colors.textMuted,
-    marginBottom: 16,
-  },
-  nudge: {
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    letterSpacing: 0.5,
-    color: colors.accent,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginTop: 16,
-    marginBottom: 20,
-  },
-  emptyText: {
-    fontFamily: fonts.regular,
-    fontSize: typeScale.body,
-    color: colors.textMuted,
-    fontStyle: "italic",
-    textAlign: "center",
-    marginTop: 20,
-  },
+    root: { flex: 1, backgroundColor: colors.bg },
+    container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
+    pageTitle: {
+      fontFamily: fonts.regular,
+      fontSize: 28,
+      letterSpacing: -0.7,
+      // Explicit, and the same 31pt the home greeting uses: the line box is
+      // what fixes where the title sits, so every tab's title lands on the
+      // same height and the settings gear centres on all of them alike.
+      lineHeight: 31,
+      color: colors.textMuted,
+      // Clears the gear button pinned in the corner.
+      paddingRight: 36,
+      marginBottom: 8,
+    },
+    emptyText: {
+      fontFamily: fonts.regular,
+      fontSize: typeScale.body,
+      color: colors.textMuted,
+      fontStyle: "italic",
+      textAlign: "center",
+      marginTop: 20,
+    },
+    // The bills tab's "Remind" / "Settle up" treatment: a small solid rect in
+    // the strongest ink available, rather than the muted outline pill this
+    // used to be. There the fill is the card's ink on the card's colour; here
+    // the button sits on the page, so the page's own text/background pair is
+    // the same relationship.
+    clearButton: {
+      alignSelf: "center",
+      marginTop: 16,
+      marginBottom: 8,
+      borderRadius: 8,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      backgroundColor: colors.text,
+    },
+    clearButtonText: {
+      fontFamily: fonts.bold,
+      fontSize: 11,
+      letterSpacing: 0.4,
+      color: colors.bg,
+    },
   });
 }

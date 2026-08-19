@@ -4,6 +4,8 @@ export type Bindings = {
   GOOGLE_CLIENT_IDS: string; // comma-separated: web,ios,android client IDs
   APPLE_CLIENT_IDS: string; // comma-separated: bundle ID + services ID
   CORS_ORIGIN: string;
+  // IANA zone the morning chore digests are timed against. See lib/choreDigest.
+  NOTIFY_TIMEZONE?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
 };

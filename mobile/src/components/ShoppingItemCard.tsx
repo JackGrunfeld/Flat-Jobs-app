@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { View, Text, Pressable, StyleSheet, Animated, PanResponder } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
-import type { ThemeColors } from "../theme/colors";
+import { onColor, withAlpha, type ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import { initialsFor } from "../utils/initials";
@@ -17,6 +17,10 @@ const MAX_VISIBLE_UPVOTERS = 3;
 
 type Props = {
   item: ShoppingListItem;
+  /** Fills the whole card — one of the dashboard's tones. Every mark on top
+   *  is either `fg` (whichever of black/white reads on it) or a translucent
+   *  wash of it, so the card needs no outline to hold its shape. */
+  tone: string;
   addedBy: FlatMember | undefined;
   upvoters: FlatMember[];
   upvoted: boolean;
@@ -36,28 +40,33 @@ function UpvoterStack({
   total,
   styles,
   fallbackColor,
+  fg,
 }: {
   upvoters: FlatMember[];
   total: number;
   styles: ReturnType<typeof createStyles>;
   fallbackColor: string;
+  fg: string;
 }) {
   if (total === 0) return null;
   const visible = upvoters.slice(0, MAX_VISIBLE_UPVOTERS);
   const overflow = total - visible.length;
   return (
     <View style={styles.upvoterStack}>
-      {visible.map((m, i) => (
-        <View
-          key={m.userId}
-          style={[styles.upvoterAvatar, { backgroundColor: m.color ?? fallbackColor, zIndex: visible.length - i, marginLeft: i === 0 ? 0 : -8 }]}
-        >
-          <Text style={styles.upvoterAvatarText}>{initialsFor(m.displayName)}</Text>
-        </View>
-      ))}
+      {visible.map((m, i) => {
+        const fill = m.color ?? fallbackColor;
+        return (
+          <View
+            key={m.userId}
+            style={[styles.upvoterAvatar, { backgroundColor: fill, zIndex: visible.length - i, marginLeft: i === 0 ? 0 : -8 }]}
+          >
+            <Text style={[styles.upvoterAvatarText, { color: onColor(fill) }]}>{initialsFor(m.displayName)}</Text>
+          </View>
+        );
+      })}
       {overflow > 0 && (
         <View style={[styles.upvoterAvatar, styles.upvoterOverflow, { marginLeft: -8 }]}>
-          <Text style={styles.upvoterAvatarText}>+{overflow}</Text>
+          <Text style={[styles.upvoterAvatarText, { color: fg }]}>+{overflow}</Text>
         </View>
       )}
     </View>
@@ -71,6 +80,7 @@ function UpvoterStack({
 // `open`/onSwipeOpen/onSwipeClose let the parent keep only one row open.
 export default function ShoppingItemCard({
   item,
+  tone,
   addedBy,
   upvoters,
   upvoted,
@@ -82,8 +92,15 @@ export default function ShoppingItemCard({
   onSwipeClose,
 }: Props) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
-  const avatarColor = addedBy?.color ?? colors.accent;
+  // Black or white, whichever reads on this card's fill — the same call the
+  // dashboard's tiles make, so a tone carries its text identically in both
+  // places and in either appearance.
+  const fg = useMemo(() => onColor(tone), [tone]);
+  const styles = useMemo(() => createStyles(colors, tone, fg), [colors, tone, fg]);
+  // A flatmate's own colour when they have one; otherwise a wash of the
+  // card's foreground, which is a translucent rgba and so takes its ink from
+  // the card rather than from `onColor` (which only reads solid hex).
+  const avatarColor = addedBy?.color ?? null;
 
   const translateX = useRef(new Animated.Value(0)).current;
   const currentX = useRef(0);
@@ -143,15 +160,17 @@ export default function ShoppingItemCard({
       </View>
       <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
         <Pressable style={styles.card} onPress={handlePress}>
-          <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
-            <Text style={styles.avatarText}>{initialsFor(addedBy?.displayName ?? "?")}</Text>
+          <View style={[styles.avatar, { backgroundColor: avatarColor ?? withAlpha(fg, 0.22) }]}>
+            <Text style={[styles.avatarText, { color: avatarColor ? onColor(avatarColor) : fg }]}>
+              {initialsFor(addedBy?.displayName ?? "?")}
+            </Text>
           </View>
 
           <View style={styles.nameArea}>
             <Text style={[styles.name, item.purchased && styles.nameDone]} numberOfLines={2}>
               {item.name}
             </Text>
-            <UpvoterStack upvoters={upvoters} total={item.upvoteCount} styles={styles} fallbackColor={colors.accent} />
+            <UpvoterStack upvoters={upvoters} total={item.upvoteCount} styles={styles} fallbackColor={colors.accent} fg={fg} />
           </View>
 
           <Pressable
@@ -159,7 +178,7 @@ export default function ShoppingItemCard({
             onPress={onUpvote}
             hitSlop={8}
           >
-            <Ionicons name="chevron-up" size={16} color={upvoted ? colors.accentText : colors.textMuted} />
+            <Ionicons name="chevron-up" size={16} color={upvoted ? tone : fg} />
             {item.upvoteCount > 0 && (
               <Text style={[styles.upvoteCount, upvoted && styles.upvoteCountActive]}>{item.upvoteCount}</Text>
             )}
@@ -176,86 +195,94 @@ export default function ShoppingItemCard({
   );
 }
 
-function createStyles(colors: ThemeColors) {
+function createStyles(colors: ThemeColors, tone: string, fg: string) {
   return StyleSheet.create({
-  wrap: { marginBottom: 12 },
-  deleteBackground: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    right: 0,
-    width: DELETE_WIDTH,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  deleteButton: {
-    flex: 1,
-    backgroundColor: colors.danger,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-  },
-  deleteText: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: "#fff" },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    borderRadius: 16,
-    padding: 12,
-    gap: 8,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: "rgba(0,0,0,0.75)" },
-  nameArea: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
-  name: { flexShrink: 1, fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.text },
-  nameDone: { textDecorationLine: "line-through", opacity: 0.5 },
-  upvoterStack: { flexDirection: "row", alignItems: "center" },
-  upvoterAvatar: {
-    width: 18,
-    height: 18,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  upvoterOverflow: { backgroundColor: colors.surfaceAlt },
-  upvoterAvatarText: { fontFamily: fonts.bold, fontSize: 8, color: "rgba(0,0,0,0.75)" },
-  upvoteButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    minWidth: 30,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
-  },
-  upvoteButtonActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  upvoteCount: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: colors.textMuted },
-  upvoteCountActive: { color: colors.accentText },
-  checkboxTouch: { padding: 2 },
-  checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.inputBorder,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxDone: { backgroundColor: colors.accent, borderColor: colors.accent },
-    checkmark: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
+    wrap: { marginBottom: 12 },
+    deleteBackground: {
+      position: "absolute",
+      top: 0,
+      bottom: 0,
+      right: 0,
+      width: DELETE_WIDTH,
+      borderRadius: 16,
+      overflow: "hidden",
+    },
+    deleteButton: {
+      flex: 1,
+      backgroundColor: colors.danger,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+    },
+    deleteText: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: "#fff" },
+    // No outline: the fill is the shape. The dashboard's tiles carry the same
+    // soft drop shadow, which is what lifts a light tone off a light page now
+    // that there's no border doing it.
+    card: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: tone,
+      borderRadius: 16,
+      padding: 12,
+      gap: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 3 },
+      elevation: 3,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: { fontFamily: fonts.bold, fontSize: typeScale.caption },
+    nameArea: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
+    // Bold, like the tiles' attribution line — the name is the card's one piece
+    // of copy, and it has a saturated fill to hold its own against.
+    name: { flexShrink: 1, fontFamily: fonts.bold, fontSize: typeScale.body, color: fg },
+    nameDone: { textDecorationLine: "line-through", opacity: 0.5 },
+    upvoterStack: { flexDirection: "row", alignItems: "center" },
+    upvoterAvatar: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      borderWidth: 1.5,
+      borderColor: tone,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    upvoterOverflow: { backgroundColor: withAlpha(fg, 0.16) },
+    upvoterAvatarText: { fontFamily: fonts.bold, fontSize: 8 },
+    // Recesses rather than outlines, the way the tiles' pill and arrow badge are
+    // washes of their own foreground.
+    upvoteButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
+      minWidth: 30,
+      height: 28,
+      paddingHorizontal: 6,
+      borderRadius: 8,
+      backgroundColor: withAlpha(fg, 0.16),
+    },
+    upvoteButtonActive: { backgroundColor: fg },
+    upvoteCount: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: fg },
+    upvoteCountActive: { color: tone },
+    checkboxTouch: { padding: 2 },
+    checkbox: {
+      width: 26,
+      height: 26,
+      borderRadius: 7,
+      borderWidth: 2,
+      borderColor: withAlpha(fg, 0.5),
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    checkboxDone: { backgroundColor: fg, borderColor: fg },
+      checkmark: { fontFamily: fonts.bold, color: tone, fontSize: typeScale.body },
   });
 }

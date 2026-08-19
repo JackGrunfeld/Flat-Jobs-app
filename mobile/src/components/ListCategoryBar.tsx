@@ -317,6 +317,12 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
                 onDragEnd={handleDragEnd}
               />
             ))}
+            {/* Add button inline with chips */}
+            <View style={styles.addChip}>
+              <Pressable style={styles.addButton} onPress={onAdd} hitSlop={8} accessibilityLabel="Add list">
+                <Ionicons name="add" size={18} color={colors.accentInk} />
+              </Pressable>
+            </View>
           </ScrollView>
 
           {/* Only fades once there's actually something running under the
@@ -333,10 +339,6 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
             />
           )}
         </View>
-
-        <Pressable style={styles.addButton} onPress={onAdd} hitSlop={8} accessibilityLabel="Add list">
-          <Ionicons name="add" size={18} color={colors.accentInk} />
-        </Pressable>
       </View>
     </View>
   );
@@ -474,21 +476,18 @@ function createStyles(colors: ThemeColors) {
     row: { flexDirection: "row", alignItems: "center" },
     scrollWrap: { flex: 1, minWidth: 0 },
     scrollContent: { flexDirection: "row", gap: GAP, paddingRight: 28, alignItems: "center" },
-    // Matches the chore chips on the house cards: 1.5px outline, tight
+    // Matches the chore chips on the house cards: no border, tight
     // radius, bold 13.
     chipWrap: { borderRadius: 6 },
     chipWrapDragging: { zIndex: 10, elevation: 10 },
     chip: {
-      borderWidth: 1.5,
-      borderColor: colors.border,
       borderRadius: 6,
       paddingVertical: 5,
       paddingHorizontal: 10,
       backgroundColor: colors.surface,
     },
-    chipActive: { borderColor: colors.accent, backgroundColor: colors.accent },
+    chipActive: { backgroundColor: colors.accent },
     chipDragging: {
-      borderColor: colors.accentInk,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.35,
@@ -502,13 +501,12 @@ function createStyles(colors: ThemeColors) {
     },
     chipTextActive: { color: colors.accentText },
     fade: { position: "absolute", right: 0, top: 0, bottom: 0, width: 32 },
+    // Inline add button styled as a chip
+    addChip: { alignItems: "center", justifyContent: "center" },
     addButton: {
-      marginLeft: 8,
       width: 30,
       height: 30,
       borderRadius: 6,
-      borderWidth: 1.5,
-      borderColor: colors.border,
       backgroundColor: colors.surfaceAlt,
       alignItems: "center",
       justifyContent: "center",
