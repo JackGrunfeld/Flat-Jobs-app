@@ -19,8 +19,8 @@ import { inkFor } from "../theme/cardInk";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import { buildDisplayNames } from "../utils/displayNames";
-import { initialsFor } from "../utils/initials";
 import type { ShoppingItem, Balance, Settlement } from "../types";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 // Signed, for the per-flatmate cards: the direction is already said in words
@@ -30,6 +30,9 @@ const formatAbs = (cents: number) => formatMoney(Math.abs(cents));
 // Matches the chores roster card, so a flatmate's block is the same object on
 // both tabs — one header tall collapsed, expanding in place when tapped.
 const CARD_HEADER_HEIGHT = 72;
+// Avatar disc on the per-flatmate balance cards, sized to sit cleanly beside
+// the 26pt name in the same 72pt header.
+const CARD_AVATAR = 34;
 // Face pile on the summary card, and how far each disc slides under the one
 // before it.
 const FACE = 28;
@@ -44,6 +47,7 @@ type Position = {
   userId: string;
   displayName: string;
   color: string | null;
+  photo: string | null;
   /** Positive: they owe you. Negative: you owe them. */
   netCents: number;
   /** The expenses the two of you actually share, newest first. */
@@ -52,26 +56,27 @@ type Position = {
 
 // Colour+initials disc. Falls back to the card's own foreground when a
 // flatmate hasn't picked a colour yet, so it's never an invisible circle.
+// Thin wrapper over the app-wide ProfileAvatar so this screen's call sites keep
+// passing `fg` — the avatars here sit on block-coloured tiles, so a member
+// without a colour of their own has to fall back to the tile's ink rather than
+// the page's.
 function Avatar({
   member,
   size,
   fg,
-  styles,
 }: {
-  member: { displayName: string; color: string | null };
+  member: { displayName: string; color: string | null; photo?: string | null };
   size: number;
   fg: string;
-  styles: Styles;
 }) {
-  const fill = member.color ?? withAlpha(fg, 0.3);
   return (
-    <View
-      style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: fill }]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.38, color: onColor(fill) }]}>
-        {initialsFor(member.displayName)}
-      </Text>
-    </View>
+    <ProfileAvatar
+      displayName={member.displayName}
+      color={member.color}
+      photo={member.photo ?? null}
+      size={size}
+      fallbackOn={fg}
+    />
   );
 }
 
@@ -151,6 +156,7 @@ export default function BillsScreen() {
           userId,
           displayName: displayNames[userId] ?? member?.displayName ?? "Unknown",
           color: member?.color ?? null,
+          photo: member?.photo ?? null,
           netCents,
           // An expense is "between us" when one of us paid and the other is on
           // the split — that's the set the number above was built from.
@@ -289,7 +295,7 @@ export default function BillsScreen() {
                     key={member.userId}
                     style={{ marginLeft: i === 0 ? 0 : -FACE_OVERLAP, zIndex: payerFaces.faces.length - i }}
                   >
-                    <Avatar member={member} size={FACE} fg={heroFg} styles={styles} />
+                    <Avatar member={member} size={FACE} fg={heroFg} />
                   </View>
                 ))}
                 {payerFaces.extra > 0 && (
@@ -341,6 +347,11 @@ export default function BillsScreen() {
                 disabled={!hasDetail}
               >
                 <View style={styles.cardHeaderRow}>
+                  <Avatar
+                    member={{ displayName: position.displayName, color: position.color, photo: position.photo }}
+                    size={CARD_AVATAR}
+                    fg={ink.strong}
+                  />
                   <View style={styles.cardInfo}>
                     <Text style={[styles.cardName, { color: ink.strong }]} numberOfLines={1}>
                       {position.displayName}
@@ -549,8 +560,6 @@ function createStyles(colors: ThemeColors) {
     heroValue: { fontFamily: fonts.display, fontSize: 40, lineHeight: 46, letterSpacing: -1.2, marginTop: 12 },
     heroCaption: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 16, marginTop: 4 },
 
-    avatar: { alignItems: "center", justifyContent: "center" },
-    avatarText: { fontFamily: fonts.bold },
     facePile: { flexDirection: "row", alignItems: "center" },
     faceMore: { width: FACE, height: FACE, borderRadius: FACE / 2, alignItems: "center", justifyContent: "center" },
     faceMoreText: { fontFamily: fonts.bold, fontSize: 11 },

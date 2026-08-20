@@ -1,5 +1,5 @@
-// Shared by anywhere a flatmate is shown as a colour+initials avatar
-// (Settings' flatmate list, shopping list item cards, ...).
+// The fallback inside ProfileAvatar, used whenever a flatmate has no photo of
+// their own — which is every avatar in the app until someone sets one.
 export function initialsFor(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";

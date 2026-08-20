@@ -7,6 +7,11 @@ export type User = {
   country: string | null;
   // Epoch ms the Terms & Conditions were accepted, set at account creation.
   termsAcceptedAt: number | null;
+  // Profile picture as a base64 `data:` URI, small enough to travel with the
+  // user row (the client resizes to 256px before uploading). Null until one is
+  // set — every avatar falls back to colour+initials, so this is never
+  // required. Feed it straight to <Image source={{ uri }} />.
+  photo: string | null;
   // Server-derived: false until name, birthday, and country are all on file.
   // RootNavigator routes to ProfileSetupScreen while this is false, which is
   // what catches OAuth signups and accounts created before the step existed.
@@ -20,6 +25,9 @@ export type FlatMember = {
   // Set at signup. Feeds the home screen calendar's automatic birthday
   // events — see utils/calendarEvents.ts.
   birthday: string | null;
+  // Same base64 data URI as User.photo, joined in so a flatmate's picture is
+  // available anywhere the flat is — see ProfileAvatar.
+  photo: string | null;
 };
 
 // A row on the flat's communal calendar. Wall-clock date/time rather than an

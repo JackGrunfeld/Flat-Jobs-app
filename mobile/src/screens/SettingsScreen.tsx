@@ -11,9 +11,10 @@ import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
-import { initialsFor } from "../utils/initials";
 import { MEMBER_PRESETS } from "../theme/pastels";
 import PastelColorWheel from "../components/PastelColorWheel";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { useProfilePhoto } from "../hooks/useProfilePhoto";
 import TermsModal from "../components/TermsModal";
 
 type MenuKey = "account" | "flatmates" | "invite";
@@ -23,15 +24,21 @@ function MenuHeader({
   open,
   onPress,
   styles,
+  leading,
 }: {
   title: string;
   open: boolean;
   onPress: () => void;
   styles: ReturnType<typeof createStyles>;
+  /** Optional element shown before the title — the profile avatar on Account. */
+  leading?: React.ReactNode;
 }) {
   return (
     <Pressable style={styles.sectionHeader} onPress={onPress}>
-      <Text style={styles.sectionHeaderText}>{title}</Text>
+      <View style={styles.sectionHeaderLeft}>
+        {leading}
+        <Text style={styles.sectionHeaderText}>{title}</Text>
+      </View>
       <Text style={styles.sectionToggle}>{open ? "−" : "+"}</Text>
     </Pressable>
   );
@@ -46,6 +53,7 @@ export default function SettingsScreen() {
   const { colors, scheme, setScheme } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat, logout, deleteAccount, leaveFlat, refreshFlat, updateDisplayName } = useAuth();
+  const profilePhoto = useProfilePhoto();
   const [termsVisible, setTermsVisible] = useState(false);
   // Guards the delete button against a second tap while the request is in
   // flight — the first one takes the account with it.
@@ -187,7 +195,26 @@ export default function SettingsScreen() {
       </Pressable>
       <Text style={styles.pageTitle}>Settings</Text>
 
-      <MenuHeader title="Account" open={openMenu === "account"} onPress={() => toggleMenu("account")} styles={styles} />
+      <MenuHeader
+        title="Account"
+        open={openMenu === "account"}
+        onPress={() => toggleMenu("account")}
+        styles={styles}
+        // Nested inside the header's Pressable on purpose: the circle is its
+        // own button (add/change photo) and swallows the tap, while the rest
+        // of the row still opens the section.
+        leading={
+          <ProfileAvatar
+            displayName={currentUser.displayName}
+            color={myColor}
+            photo={profilePhoto.photo}
+            size={38}
+            editable
+            busy={profilePhoto.saving}
+            onPress={profilePhoto.edit}
+          />
+        }
+      />
       {openMenu === "account" && (
         <View style={styles.menuBody}>
           <Text style={styles.formFieldLabel}>Name</Text>
@@ -290,9 +317,10 @@ export default function SettingsScreen() {
         <View style={styles.menuBody}>
           {userFlat.members.map((m) => (
             <View key={m.userId} style={[styles.memberCard, { backgroundColor: m.color ?? colors.accent }]}>
-              <View style={styles.memberAvatar}>
-                <Text style={styles.memberAvatarText}>{initialsFor(m.displayName)}</Text>
-              </View>
+              {/* No `color` — the card is already in the member's colour, so
+                  the avatar would vanish into it. It falls back to a dark wash
+                  on the card instead. */}
+              <ProfileAvatar displayName={m.displayName} color={null} photo={m.photo} size={32} fallbackOn="#000000" />
               <Text style={styles.memberName}>{m.displayName}</Text>
             </View>
           ))}
@@ -430,6 +458,7 @@ function createStyles(colors: ThemeColors) {
     paddingVertical: 10,
     marginTop: 18,
   },
+  sectionHeaderLeft: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 },
   sectionHeaderText: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 2, textTransform: "uppercase", color: colors.textMuted },
   sectionToggle: { fontFamily: fonts.bold, fontSize: typeScale.body, color: colors.textMuted, width: 18, textAlign: "center" },
   menuBody: { paddingTop: 12, paddingHorizontal: 2, paddingBottom: 8, gap: 10 },
@@ -459,15 +488,6 @@ function createStyles(colors: ThemeColors) {
   code: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 5, color: colors.accent },
   invitedRow: { fontFamily: fonts.bold, fontSize: typeScale.body, paddingVertical: 3, color: colors.textMuted },
   memberCard: { flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12, gap: 12, marginTop: 8 },
-  memberAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  memberAvatarText: { fontFamily: fonts.bold, fontSize: typeScale.caption, color: "rgba(0,0,0,0.75)" },
   memberName: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 0.3, textTransform: "uppercase", color: "rgba(0,0,0,0.75)" },  formFieldLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 10, marginBottom: 6 },
   schemeSelector: { flexDirection: "row", gap: 6 },
   schemeBtn: {

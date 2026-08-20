@@ -10,7 +10,13 @@ import { computeBalances } from "./settlements";
 const flats = new Hono<AppEnv>();
 flats.use("*", requireAuth);
 
-type MemberRow = { user_id: string; display_name: string; color: string | null; birthday: string | null };
+type MemberRow = {
+  user_id: string;
+  display_name: string;
+  color: string | null;
+  birthday: string | null;
+  photo: string | null;
+};
 
 async function loadFlatDto(db: D1Database, flatId: string) {
   const flat = await db.prepare("SELECT * FROM flats WHERE id = ?").bind(flatId).first<{
@@ -27,7 +33,7 @@ async function loadFlatDto(db: D1Database, flatId: string) {
       // Explicitly ordered: the chore rotation is an index into this list, so
       // an unordered scan would be free to hand the same week's chores to
       // different people on the app and in the digest job (see lib/roster.ts).
-      `SELECT fm.user_id, u.display_name, fm.color, u.birthday
+      `SELECT fm.user_id, u.display_name, fm.color, u.birthday, u.photo
        FROM flat_members fm JOIN users u ON u.id = fm.user_id
        WHERE fm.flat_id = ?
        ORDER BY fm.joined_at ASC, fm.user_id ASC`,
@@ -50,6 +56,7 @@ async function loadFlatDto(db: D1Database, flatId: string) {
       displayName: m.display_name,
       color: m.color,
       birthday: m.birthday,
+      photo: m.photo,
     })),
     invitedEmails: (inviteRows ?? []).map((r) => r.email),
   };

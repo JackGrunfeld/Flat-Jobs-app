@@ -5,8 +5,8 @@ import { useTheme } from "../context/ThemeContext";
 import { onColor, withAlpha, type ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
-import { initialsFor } from "../utils/initials";
 import type { FlatMember, ShoppingListItem } from "../types";
+import ProfileAvatar from "./ProfileAvatar";
 
 const DELETE_WIDTH = 84;
 const OPEN_X = -DELETE_WIDTH;
@@ -14,6 +14,13 @@ const OPEN_X = -DELETE_WIDTH;
 // snapping back — roughly iMessage's own halfway-ish commit point.
 const OPEN_COMMIT_X = OPEN_X * 0.4;
 const MAX_VISIBLE_UPVOTERS = 3;
+
+// The "added by" face on the left of the card, and the smaller ones in the
+// upvoter stack. Both are ProfileAvatar, so these are the only sizes the card
+// still owns — everything else about how a face is drawn lives in that
+// component.
+const ADDED_BY_AVATAR_SIZE = 40;
+const UPVOTER_AVATAR_SIZE = 16;
 
 type Props = {
   item: ShoppingListItem;
@@ -53,17 +60,20 @@ function UpvoterStack({
   const overflow = total - visible.length;
   return (
     <View style={styles.upvoterStack}>
-      {visible.map((m, i) => {
-        const fill = m.color ?? fallbackColor;
-        return (
-          <View
-            key={m.userId}
-            style={[styles.upvoterAvatar, { backgroundColor: fill, zIndex: visible.length - i, marginLeft: i === 0 ? 0 : -8 }]}
-          >
-            <Text style={[styles.upvoterAvatarText, { color: onColor(fill) }]}>{initialsFor(m.displayName)}</Text>
-          </View>
-        );
-      })}
+      {visible.map((m, i) => (
+        <View
+          key={m.userId}
+          style={[styles.upvoterRing, { zIndex: visible.length - i, marginLeft: i === 0 ? 0 : -8 }]}
+        >
+          <ProfileAvatar
+            displayName={m.displayName}
+            color={m.color ?? fallbackColor}
+            photo={m.photo}
+            size={UPVOTER_AVATAR_SIZE}
+            fallbackOn={fg}
+          />
+        </View>
+      ))}
       {overflow > 0 && (
         <View style={[styles.upvoterAvatar, styles.upvoterOverflow, { marginLeft: -8 }]}>
           <Text style={[styles.upvoterAvatarText, { color: fg }]}>+{overflow}</Text>
@@ -160,11 +170,13 @@ export default function ShoppingItemCard({
       </View>
       <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
         <Pressable style={styles.card} onPress={handlePress}>
-          <View style={[styles.avatar, { backgroundColor: avatarColor ?? withAlpha(fg, 0.22) }]}>
-            <Text style={[styles.avatarText, { color: avatarColor ? onColor(avatarColor) : fg }]}>
-              {initialsFor(addedBy?.displayName ?? "?")}
-            </Text>
-          </View>
+          <ProfileAvatar
+            displayName={addedBy?.displayName ?? "?"}
+            color={avatarColor}
+            photo={addedBy?.photo}
+            size={ADDED_BY_AVATAR_SIZE}
+            fallbackOn={fg}
+          />
 
           <View style={styles.nameArea}>
             <Text style={[styles.name, item.purchased && styles.nameDone]} numberOfLines={2}>
@@ -231,20 +243,18 @@ function createStyles(colors: ThemeColors, tone: string, fg: string) {
       shadowOffset: { width: 0, height: 3 },
       elevation: 3,
     },
-    avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: { fontFamily: fonts.bold, fontSize: typeScale.caption },
     nameArea: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
     // Bold, like the tiles' attribution line — the name is the card's one piece
     // of copy, and it has a saturated fill to hold its own against.
     name: { flexShrink: 1, fontFamily: fonts.bold, fontSize: typeScale.body, color: fg },
     nameDone: { textDecorationLine: "line-through", opacity: 0.5 },
     upvoterStack: { flexDirection: "row", alignItems: "center" },
+    // Ring only — the face inside it is a ProfileAvatar.
+    upvoterRing: {
+      borderWidth: 1.5,
+      borderColor: tone,
+      borderRadius: (UPVOTER_AVATAR_SIZE + 3) / 2,
+    },
     upvoterAvatar: {
       width: 18,
       height: 18,

@@ -45,6 +45,11 @@ export const updateDisplayName = (displayName: string) =>
 export const updateProfile = (profile: { displayName?: string; birthday?: string; country?: string }) =>
   apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: JSON.stringify(profile) });
 
+// `photo` is a base64 data URI; passing null is how the picture is removed,
+// so this deliberately sends the key even when the value is null.
+export const updatePhoto = (photo: string | null) =>
+  apiFetch<{ user: User }>("/auth/me", { method: "PATCH", body: JSON.stringify({ photo }) });
+
 // Permanent, immediate, and not undoable — see the Worker's DELETE /auth/me
 // for exactly what goes. The caller is responsible for having asked twice.
 export const deleteAccount = () => apiFetch<{ success: true }>("/auth/me", { method: "DELETE" });

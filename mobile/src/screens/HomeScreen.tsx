@@ -20,7 +20,6 @@ import CalendarStrip from "../components/CalendarStrip";
 import RevealTile from "../components/RevealTile";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
-import { initialsFor } from "../utils/initials";
 import {
   addDays,
   addMonths,
@@ -37,6 +36,7 @@ import { EVENT_CATEGORIES, isBillCategory, recurrenceCaption } from "../theme/ev
 import * as eventsService from "../services/eventsService";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
 import type { Chore, Completion, ShoppingItem, Balance, FlatEvent, NewFlatEvent } from "../types";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 // Months either side of today that the calendar can be swiped to. Doubles as
 // the window birthday events are built over, so every month reachable by a
@@ -91,29 +91,27 @@ function Pill({ text, fg, styles }: { text: string; fg: string; styles: Styles }
 
 // Colour+initials disc. Falls back to the card's own foreground when a
 // flatmate hasn't picked a colour yet, so it's never an invisible circle.
+// Thin wrapper over the app-wide ProfileAvatar so this screen's call sites keep
+// passing `fg` — the avatars here sit on block-coloured tiles, so a member
+// without a colour of their own has to fall back to the tile's ink rather than
+// the page's.
 function Avatar({
   member,
   size,
   fg,
-  styles,
 }: {
-  member: { displayName: string; color: string | null };
+  member: { displayName: string; color: string | null; photo?: string | null };
   size: number;
   fg: string;
-  styles: Styles;
 }) {
-  const fill = member.color ?? withAlpha(fg, 0.3);
   return (
-    <View
-      style={[
-        styles.avatar,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: fill },
-      ]}
-    >
-      <Text style={[styles.avatarText, { fontSize: size * 0.38, color: onColor(fill) }]}>
-        {initialsFor(member.displayName)}
-      </Text>
-    </View>
+    <ProfileAvatar
+      displayName={member.displayName}
+      color={member.color}
+      photo={member.photo ?? null}
+      size={size}
+      fallbackOn={fg}
+    />
   );
 }
 
@@ -501,7 +499,6 @@ export default function HomeScreen() {
                               member={nextChore.member}
                               size={FACE_LARGE}
                               fg={fg}
-                              styles={styles}
                             />
                             <View style={styles.attributionText}>
                               <Text style={[styles.attributionRole, { color: withAlpha(fg, 0.65) }]}>
@@ -620,7 +617,7 @@ export default function HomeScreen() {
                           key={member.userId}
                           style={{ marginLeft: i === 0 ? 0 : -FACE_OVERLAP, zIndex: listFaces.faces.length - i }}
                         >
-                          <Avatar member={member} size={FACE} fg={fg} styles={styles} />
+                          <Avatar member={member} size={FACE} fg={fg} />
                         </View>
                       ))}
                       {listFaces.extra > 0 && (
@@ -746,8 +743,6 @@ function createStyles(colors: ThemeColors) {
   attributionSolo: { flex: 1, minWidth: 0 },
   tickBadge: { width: FACE_LARGE, height: FACE_LARGE, borderRadius: FACE_LARGE / 2, alignItems: "center", justifyContent: "center" },
 
-  avatar: { alignItems: "center", justifyContent: "center" },
-  avatarText: { fontFamily: fonts.bold },
 
   wideRow: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   wideText: { flex: 1 },

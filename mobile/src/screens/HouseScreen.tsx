@@ -17,6 +17,7 @@ import RevealTile from "../components/RevealTile";
 import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
 import ChoreFormModal, { FREQUENCIES, type ChoreFormValues } from "../components/ChoreFormModal";
 import DayStrip from "../components/DayStrip";
+import ProfileAvatar from "../components/ProfileAvatar";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { Ionicons } from "@expo/vector-icons";
 import type { Chore, Completion } from "../types";
@@ -40,6 +41,9 @@ const PIE_RADIUS = 15;
 // The card face sits on a flatmate's own colour, so its palette follows that
 // colour rather than the theme — see theme/cardInk.
 const CARD_HEADER_HEIGHT = 72;
+// Avatar disc on the per-flatmate roster cards, sized to sit cleanly beside
+// the 26pt name in the same 72pt header.
+const CARD_AVATAR = 34;
 
 // How far through a flatmate's jobs they are, drawn as a pizza: the fill
 // sweeps clockwise from twelve o'clock, so one of four is a quarter slice.
@@ -103,6 +107,32 @@ function PieFill({
         </View>
       )}
     </View>
+  );
+}
+
+// Colour+initials disc. Falls back to the card's own foreground when a
+// flatmate hasn't picked a colour yet, so it's never an invisible circle.
+// Thin wrapper over the app-wide ProfileAvatar so this screen's call sites keep
+// passing `fg` — the avatars here sit on block-coloured tiles, so a member
+// without a colour of their own has to fall back to the tile's ink rather than
+// the page's.
+function Avatar({
+  member,
+  size,
+  fg,
+}: {
+  member: { displayName: string; color: string | null; photo?: string | null };
+  size: number;
+  fg: string;
+}) {
+  return (
+    <ProfileAvatar
+      displayName={member.displayName}
+      color={member.color}
+      photo={member.photo ?? null}
+      size={size}
+      fallbackOn={fg}
+    />
   );
 }
 
@@ -372,6 +402,7 @@ export default function HouseScreen() {
                 disabled={offDuty}
               >
                 <View style={styles.cardHeaderRow}>
+                  <Avatar member={card.member} size={CARD_AVATAR} fg={ink.strong} />
                   <View style={styles.choreInfo}>
                     <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
                       {card.displayName}

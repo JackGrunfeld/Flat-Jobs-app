@@ -25,6 +25,7 @@ type UserRow = {
   country: string | null;
   terms_accepted_at: number | null;
   terms_version: string | null;
+  photo: string | null;
 };
 
 // Bump when the terms materially change; `terms_version` on the row records
@@ -43,6 +44,17 @@ function isValidBirthday(value: string): boolean {
 // reject obvious junk rather than validate against the full registry.
 function isValidCountry(value: string): boolean {
   return /^[A-Z]{2}$/.test(value);
+}
+
+// The photo rides on the user row as a base64 data URI (see migration 0010),
+// and it is returned inline on /me and with every flat member — so the cap
+// matters. The client downscales to a 256px JPEG, which lands well under this;
+// anything near the limit means the client-side resize didn't run.
+const MAX_PHOTO_BYTES = 256 * 1024;
+
+function isValidPhoto(value: string): boolean {
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return false;
+  return value.length <= MAX_PHOTO_BYTES;
 }
 
 async function issueSession(db: D1Database, userId: string, jwtSecret: string) {
@@ -71,6 +83,7 @@ function userDto(row: UserRow) {
     birthday: row.birthday,
     country: row.country,
     termsAcceptedAt: row.terms_accepted_at,
+    photo: row.photo,
     // The client routes to the profile step until every field the onboarding
     // form collects is on file. Derived here rather than in the app so the
     // rule lives in one place as fields get added.
@@ -210,6 +223,7 @@ async function upsertOAuthUser(
       country: null,
       terms_accepted_at: acceptedAt,
       terms_version: CURRENT_TERMS_VERSION,
+      photo: null,
     };
   }
 
@@ -307,18 +321,20 @@ auth.get("/me", requireAuth, async (c) => {
   return c.json({ user: userDto(row) });
 });
 
-// Partial update: the profile-setup step sends all three at once, while the
-// settings screen still sends displayName alone. Any omitted field is left as
-// it is, so the two callers can share the endpoint.
+// Partial update: the profile-setup step sends name/birthday/country at once,
+// while the settings screen sends displayName or photo on its own. Any omitted
+// field is left as it is, so every caller can share the endpoint.
 auth.patch("/me", requireAuth, async (c) => {
-  const { displayName, birthday, country } = await c.req.json<{
+  const { displayName, birthday, country, photo } = await c.req.json<{
     displayName?: string;
     birthday?: string;
     country?: string;
+    photo?: string | null;
   }>();
 
   const updates: string[] = [];
-  const values: (string | number)[] = [];
+  // Nullable because clearing the photo binds a literal NULL.
+  const values: (string | number | null)[] = [];
 
   if (displayName !== undefined) {
     if (!displayName.trim()) throw new HttpError(400, "displayName cannot be empty");
@@ -341,8 +357,18 @@ auth.patch("/me", requireAuth, async (c) => {
     values.push(normalizedCountry);
   }
 
+  // An explicit null clears the photo — that's how "remove photo" is sent,
+  // and it's why this checks `!== undefined` rather than truthiness.
+  if (photo !== undefined) {
+    if (photo !== null && !isValidPhoto(photo)) {
+      throw new HttpError(400, "photo must be a base64 image data URI of at most 256KB");
+    }
+    updates.push("photo = ?");
+    values.push(photo);
+  }
+
   if (updates.length === 0) {
-    throw new HttpError(400, "At least one of displayName, birthday, or country is required");
+    throw new HttpError(400, "At least one of displayName, birthday, country, or photo is required");
   }
 
   const userId = c.get("userId");

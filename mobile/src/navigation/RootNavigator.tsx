@@ -19,6 +19,7 @@ const DEV_USER: User = {
   birthday: null,
   country: null,
   termsAcceptedAt: null,
+  photo: null,
   profileComplete: true,
 };
 const DEV_FLAT: Flat = {
@@ -26,7 +27,7 @@ const DEV_FLAT: Flat = {
   name: "Dev Flat",
   code: "DEV000",
   ownerId: "dev-user",
-  members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2", birthday: null }],
+  members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2", birthday: null, photo: null }],
   invitedEmails: [],
 };
 

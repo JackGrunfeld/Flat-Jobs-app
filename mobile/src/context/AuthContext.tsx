@@ -24,6 +24,7 @@ type AuthContextValue = {
   refreshFlat: () => Promise<Flat | null>;
   leaveFlat: () => Promise<void>;
   updateDisplayName: (name: string) => Promise<void>;
+  updatePhoto: (photo: string | null) => Promise<void>;
   updateProfile: (profile: { displayName: string; birthday: string; country: string }) => Promise<void>;
 };
 
@@ -145,6 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await refreshFlat();
   };
 
+  // The photo is joined onto every flat member too, so the flat has to be
+  // refetched for the new picture to reach the avatars on the other tabs —
+  // same reasoning as updateDisplayName above.
+  const updatePhoto = async (photo: string | null) => {
+    const { user } = await authService.updatePhoto(photo);
+    setCurrentUser(user);
+    await refreshFlat();
+  };
+
   // Written by ProfileSetupScreen. Setting currentUser to the returned row is
   // what flips `profileComplete` and lets RootNavigator move past the step, so
   // this must use the server's copy rather than the local form values.
@@ -168,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         refreshFlat,
         leaveFlat,
         updateDisplayName,
+        updatePhoto,
         updateProfile,
       }}
     >
