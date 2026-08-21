@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import ModalSheet, { createFormStyles } from "./ModalSheet";
+import MemberMultiSelect from "./MemberMultiSelect";
+import SelectDropdown from "./SelectDropdown";
 import { useTheme } from "../context/ThemeContext";
-import { inkFor } from "../theme/cardInk";
 import type { FlatMember, ShoppingCategory } from "../types";
 
 export const CATEGORIES: ShoppingCategory[] = ["Food", "Utilities", "Household", "Other"];
@@ -42,11 +43,20 @@ export default function AddExpenseModal({ visible, members, currentUserId, onClo
     setName("");
     setCost("");
     setCategory("Food");
-    setSplitWith([currentUserId]);
+    // "All" is the default: an empty split means everyone shares it.
+    setSplitWith([]);
   }, [visible, currentUserId]);
 
+  // "All" is the resting state: an empty selection (or one covering every
+  // member) means everyone. Tapping a member while in the "All" state switches
+  // to just that person; selecting everyone again returns to "All".
   const toggleSplit = (userId: string) => {
-    setSplitWith((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+    setSplitWith((prev) => {
+      const isAll = prev.length === 0 || prev.length === members.length;
+      if (isAll) return [userId];
+      const next = prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId];
+      return next.length === members.length ? [] : next;
+    });
   };
 
   const costCents = Math.round(parseFloat(cost || "0") * 100);
@@ -101,37 +111,15 @@ export default function AddExpenseModal({ visible, members, currentUserId, onClo
       />
 
       <Text style={form.fieldLabel}>Category</Text>
-      <View style={form.row}>
-        {CATEGORIES.map((cat) => (
-          <Pressable
-            key={cat}
-            style={[form.chip, category === cat && form.chipActive]}
-            onPress={() => setCategory(cat)}
-          >
-            <Text style={[form.chipText, category === cat && form.chipTextActive]}>{cat}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <SelectDropdown options={CATEGORIES} value={category} onChange={setCategory} placeholder="Select category" />
 
       <Text style={form.fieldLabel}>Split with</Text>
-      <View style={form.row}>
-        {members.map((m) => {
-          const active = splitWith.includes(m.userId);
-          // Picks up the flatmate's own colour when they're in the split, the
-          // same way the chore rotation chips do — and their colour decides
-          // the ink, since a pastel takes black and a deep one takes white.
-          const fill = m.color ?? colors.accent;
-          return (
-            <Pressable
-              key={m.userId}
-              style={[form.chip, active && { backgroundColor: fill, borderColor: "transparent" }]}
-              onPress={() => toggleSplit(m.userId)}
-            >
-              <Text style={[form.chipText, active && { color: inkFor(fill).strong }]}>{m.displayName}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <MemberMultiSelect
+        members={members}
+        selectedIds={splitWith}
+        onToggle={toggleSplit}
+        placeholder="Select who splits it"
+      />
     </ModalSheet>
   );
 }

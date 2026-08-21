@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import { View, Text, TextInput, Pressable } from "react-native";
 import ModalSheet, { createFormStyles } from "./ModalSheet";
+import MemberMultiSelect from "./MemberMultiSelect";
+import SelectDropdown from "./SelectDropdown";
 import { useTheme } from "../context/ThemeContext";
-import { inkFor } from "../theme/cardInk";
-import type { ThemeColors } from "../theme/colors";
 import type { Chore, FlatMember, Frequency } from "../types";
 
 export const FREQUENCIES: Frequency[] = ["Daily", "Weekly", "Monthly"];
@@ -30,7 +30,6 @@ type Props = {
 // minus the scroll-into-view machinery an inline form needed.
 export default function ChoreFormModal({ visible, chore, members, onClose, onSubmit }: Props) {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
   const form = useMemo(() => createFormStyles(colors), [colors]);
 
   const [name, setName] = useState("");
@@ -49,8 +48,16 @@ export default function ChoreFormModal({ visible, chore, members, onClose, onSub
     setMemberIds(chore?.memberIds ?? []);
   }, [visible, chore]);
 
+  // "All" is the resting state: an empty selection (or one covering every
+  // member) means everyone. Tapping a member while in the "All" state switches
+  // to just that person; selecting everyone again returns to "All".
   const toggleMember = (userId: string) => {
-    setMemberIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+    setMemberIds((prev) => {
+      const isAll = prev.length === 0 || prev.length === members.length;
+      if (isAll) return [userId];
+      const next = prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId];
+      return next.length === members.length ? [] : next;
+    });
   };
 
   const handleSubmit = async () => {
@@ -93,42 +100,10 @@ export default function ChoreFormModal({ visible, chore, members, onClose, onSub
       />
 
       <Text style={form.fieldLabel}>Frequency</Text>
-      {/* A segmented control rather than free-flowing chips: three fixed
-          options that read better sharing the width evenly. */}
-      <View style={styles.freqSelector}>
-        {FREQUENCIES.map((freq) => (
-          <Pressable
-            key={freq}
-            style={[styles.freqBtn, frequency === freq && styles.freqBtnActive]}
-            onPress={() => setFrequency(freq)}
-          >
-            <Text style={[form.chipText, frequency === freq && form.chipTextActive]}>{freq}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <SelectDropdown options={FREQUENCIES} value={frequency} onChange={setFrequency} placeholder="Select frequency" />
 
       <Text style={form.fieldLabel}>Rotation members</Text>
-      <View style={form.row}>
-        {members.map((m) => {
-          const active = memberIds.includes(m.userId);
-          const fill = m.color ?? colors.accent;
-          return (
-            <Pressable
-              key={m.userId}
-              style={[form.chip, active && { backgroundColor: fill, borderColor: "transparent" }]}
-              onPress={() => toggleMember(m.userId)}
-            >
-              <Text style={[form.chipText, active && { color: inkFor(fill).strong }]}>{m.displayName}</Text>
-            </Pressable>
-          );
-        })}
-        <Pressable
-          style={[form.chip, memberIds.length === 0 && styles.chipAllActive]}
-          onPress={() => setMemberIds([])}
-        >
-          <Text style={form.chipText}>All</Text>
-        </Pressable>
-      </View>
+      <MemberMultiSelect members={members} selectedIds={memberIds} onToggle={toggleMember} />
 
       <Text style={form.fieldLabel}>Description</Text>
       <TextInput
@@ -143,22 +118,3 @@ export default function ChoreFormModal({ visible, chore, members, onClose, onSub
   );
 }
 
-// Only what the shared form vocabulary doesn't cover: the frequency control's
-// equal-width segments, and the "All" chip's neutral selected state (it isn't
-// a person, so it can't borrow a member colour).
-function createStyles(colors: ThemeColors) {
-  return StyleSheet.create({
-    freqSelector: { flexDirection: "row", gap: 6 },
-    freqBtn: {
-      flex: 1,
-      backgroundColor: colors.surfaceAlt,
-      borderWidth: 1.5,
-      borderColor: colors.border,
-      borderRadius: 10,
-      paddingVertical: 10,
-      alignItems: "center",
-    },
-    freqBtnActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-    chipAllActive: { backgroundColor: colors.border, borderColor: colors.inputBorder },
-  });
-}

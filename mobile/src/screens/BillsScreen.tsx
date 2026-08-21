@@ -32,7 +32,7 @@ const formatAbs = (cents: number) => formatMoney(Math.abs(cents));
 const CARD_HEADER_HEIGHT = 72;
 // Avatar disc on the per-flatmate balance cards, sized to sit cleanly beside
 // the 26pt name in the same 72pt header.
-const CARD_AVATAR = 34;
+const CARD_AVATAR = 44;
 // Face pile on the summary card, and how far each disc slides under the one
 // before it.
 const FACE = 28;
@@ -454,7 +454,7 @@ export default function BillsScreen() {
                           </Text>
                         </View>
                         <Pressable style={styles.iconButton} onPress={() => deleteExpense(item.id)} hitSlop={8}>
-                          <Ionicons name="trash-outline" size={14} color={colors.danger} />
+                          <Ionicons name="trash-outline" size={18} color={colors.danger} />
                         </Pressable>
                       </View>
                     </View>

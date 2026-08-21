@@ -8,14 +8,56 @@ const extra = (Constants.expoConfig?.extra ?? {}) as {
 
 // Points at `workers/` (Cloudflare Workers API).
 //
-// EXPO_PUBLIC_API_BASE_URL wins when set — Metro inlines it at bundle time, so
-// pointing the app at a local `wrangler dev` is a shell variable rather than an
-// edit to app.json. That matters because an edited app.json is easy to commit
-// or ship by accident; an unset env var simply falls back to production.
+// Resolution order — each level is a deliberate fallback, not an accident:
 //
-//   EXPO_PUBLIC_API_BASE_URL=http://192.168.1.12:8787 npx expo start --clear
+//   1. EXPO_PUBLIC_API_BASE_URL — inlined by Metro at serve time, so pointing
+//      the app at a local `wrangler dev` is a shell variable rather than an
+//      edit to app.json. That matters because an edited app.json is easy to
+//      commit or ship by accident; an unset env var simply falls back.
+//
+//   2. extra.apiBaseUrl — the production Worker URL baked into app.json. This
+//      is the dev default: an unset env var in a dev build still reaches a live
+//      API (the production Worker), so sign-in and the rest work on a physical
+//      device without any extra config. It just means you're testing against
+//      the deployed backend, not your local `wrangler dev`.
+//
+//   3. "http://localhost:8787" — absolute last resort, only hit if app.json's
+//      extra.apiBaseUrl is also missing (it shouldn't be).
+//
+// When running against a LOCAL wrangler dev server on a physical device, set
+// the env var to your machine's LAN IP — `localhost` on the device is not your
+// dev machine:
+//
+//   # Find your LAN IP first:
+//   ifconfig | grep "inet " | grep -v 127.0.0.1   # → 192.168.1.12 (example)
+//
+//   # Start wrangler dev listening on all interfaces:
+//   cd ../workers && npx wrangler dev --host 0.0.0.0
+//
+//   # Start Metro, telling the app to talk to the local server:
+//   EXPO_PUBLIC_API_BASE_URL=http://192.168.1.12:8787 npx expo start --dev-client --host lan
+//
+//   # Or, use Expo's tunnel relay (works from any network):
+//   EXPO_PUBLIC_API_BASE_URL=http://192.168.1.12:8787 npx expo start --dev-client --tunnel
+//
+//   # Simulator-only dev — no env var needed, falls back to production API:
+//   npx expo start --dev-client
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? extra.apiBaseUrl ?? "http://localhost:8787";
+  process.env.EXPO_PUBLIC_API_BASE_URL
+  ?? extra.apiBaseUrl
+  ?? "http://localhost:8787";
+
+// In dev mode, warn loudly when the local dev server isn't being targeted, so
+// it's never a mystery why sign-in fails against a localhost that isn't yours.
+if (__DEV__ && !process.env.EXPO_PUBLIC_API_BASE_URL) {
+  const target = extra.apiBaseUrl ?? "http://localhost:8787";
+  console.warn(
+    "[env] EXPO_PUBLIC_API_BASE_URL is not set — dev build is using " + target + ".\n" +
+      "To test against a local `wrangler dev` server on a physical device, set:\n" +
+      "  EXPO_PUBLIC_API_BASE_URL=http://<your-lan-ip>:8787\n" +
+      "and start wrangler with `npx wrangler dev --host 0.0.0.0`.",
+  );
+}
 
 // Both OAuth client IDs live in app.json's `extra` rather than here, so a
 // build variant can change them without touching source.

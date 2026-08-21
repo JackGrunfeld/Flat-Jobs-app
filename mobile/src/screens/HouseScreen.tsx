@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { View, Text, Pressable, StyleSheet, ScrollView, Animated } from "react-native";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
@@ -36,14 +38,14 @@ const MAX_TASK_CHIPS = 3;
 // little wider than the box's own half-diagonal (18/√2 ≈ 12.7) so a full sweep
 // reaches into the corners instead of leaving a circle inscribed in a square.
 const PIE_HALF = 9;
-const PIE_RADIUS = 15;
+const PIE_RADIUS = 45;
 
 // The card face sits on a flatmate's own colour, so its palette follows that
 // colour rather than the theme — see theme/cardInk.
 const CARD_HEADER_HEIGHT = 72;
 // Avatar disc on the per-flatmate roster cards, sized to sit cleanly beside
 // the 26pt name in the same 72pt header.
-const CARD_AVATAR = 34;
+const CARD_AVATAR = 44;
 
 // How far through a flatmate's jobs they are, drawn as a pizza: the fill
 // sweeps clockwise from twelve o'clock, so one of four is a quarter slice.
@@ -572,10 +574,10 @@ export default function HouseScreen() {
                               onPress={() => setChoreForm({ open: true, chore })}
                               hitSlop={8}
                             >
-                              <Ionicons name="pencil" size={13} color={colors.textMuted} />
+                              <Ionicons name="pencil" size={18} color={colors.textMuted} />
                             </Pressable>
                             <Pressable style={styles.iconButton} onPress={() => deleteChore(chore.id)} hitSlop={8}>
-                              <Ionicons name="trash-outline" size={13} color={colors.danger} />
+                              <Ionicons name="trash-outline" size={18} color={colors.danger} />
                             </Pressable>
                             <Text style={styles.chevron}>{expanded ? "−" : "+"}</Text>
                           </View>

@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Alert, Linkin
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
 import { useAuth } from "../context/AuthContext";
 import * as flatService from "../services/flatService";
 import { ApiError } from "../services/apiClient";
@@ -17,7 +18,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useProfilePhoto } from "../hooks/useProfilePhoto";
 import TermsModal from "../components/TermsModal";
 
-type MenuKey = "account" | "flatmates" | "invite";
+type MenuKey = "account" | "flat" | "flatmates" | "invite";
 
 function MenuHeader({
   title,
@@ -66,6 +67,8 @@ export default function SettingsScreen() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [openMenu, setOpenMenu] = useState<MenuKey | null>(null);
   const [showColorWheel, setShowColorWheel] = useState(false);
+  // Flips the flat code to "Copied" for a moment after it's tapped.
+  const [copied, setCopied] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
   // The screen pads 16 a side and the menu body another 2 — the rest is the
   // wheel's, capped so it doesn't balloon on tablets.
@@ -180,6 +183,14 @@ export default function SettingsScreen() {
     }
   };
 
+  // Tapping the flat code copies it to the clipboard and swaps the label to
+  // "Copied" for a moment before it settles back to the code.
+  const copyCode = async () => {
+    await Clipboard.setStringAsync(userFlat.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <ScrollView
       ref={scrollRef}
@@ -195,6 +206,7 @@ export default function SettingsScreen() {
       </Pressable>
       <Text style={styles.pageTitle}>Settings</Text>
 
+      {/* ── Account: name, email, profile photo, accent colour ── */}
       <MenuHeader
         title="Account"
         open={openMenu === "account"}
@@ -269,28 +281,13 @@ export default function SettingsScreen() {
               />
             </View>
           )}
+        </View>
+      )}
 
-          <Text style={styles.formFieldLabel}>Appearance</Text>
-          <View style={styles.schemeSelector}>
-            {(["dark", "light"] as const).map((option) => {
-              const active = scheme === option;
-              return (
-                <Pressable
-                  key={option}
-                  style={[styles.schemeBtn, active && styles.schemeBtnActive]}
-                  onPress={() => setScheme(option)}
-                >
-                  <Ionicons
-                    name={option === "dark" ? "moon" : "sunny"}
-                    size={14}
-                    color={active ? colors.accentText : colors.textMuted}
-                  />
-                  <Text style={[styles.schemeBtnText, active && styles.schemeBtnTextActive]}>{option}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-
+      {/* ── Flat: name, code, invite button ── */}
+      <MenuHeader title="Flat" open={openMenu === "flat"} onPress={() => toggleMenu("flat")} styles={styles} />
+      {openMenu === "flat" && (
+        <View style={styles.menuBody}>
           <Text style={styles.formFieldLabel}>Flat name</Text>
           <View style={styles.row}>
             <View style={[styles.inputRow, styles.flex1]}>
@@ -305,10 +302,19 @@ export default function SettingsScreen() {
               <Text style={styles.smallButtonText}>Save</Text>
             </Pressable>
           </View>
-          <View style={styles.codeRow}>
+          <Pressable style={styles.codeRow} onPress={copyCode}>
             <Text style={styles.codeLabel}>Flat Code</Text>
-            <Text style={styles.code}>{userFlat.code}</Text>
-          </View>
+            {/* accentInk is the accent hue deepened until it reads as ink, so
+                the code stands out against the alt surface instead of washing
+                into it the way the pastel accent does. */}
+            <Text style={[styles.code, { color: colors.accentInk }]}>{copied ? "Copied" : userFlat.code}</Text>
+          </Pressable>
+
+          {/* Takes you to the Invite Flatmates menu below. */}
+          <Pressable style={styles.inviteButton} onPress={() => toggleMenu("invite")}>
+            <Ionicons name="person-add-outline" size={16} color={colors.accentText} />
+            <Text style={styles.inviteButtonText}>Invite flatmates</Text>
+          </Pressable>
         </View>
       )}
 
@@ -324,6 +330,13 @@ export default function SettingsScreen() {
               <Text style={styles.memberName}>{m.displayName}</Text>
             </View>
           ))}
+
+          {/* Invite lives here too, below the roster — the same button the Flat
+              menu carries, so it's reachable from either section. */}
+          <Pressable style={styles.inviteButton} onPress={() => toggleMenu("invite")}>
+            <Ionicons name="person-add-outline" size={16} color={colors.accentText} />
+            <Text style={styles.inviteButtonText}>Invite flatmates</Text>
+          </Pressable>
         </View>
       )}
 
@@ -358,6 +371,28 @@ export default function SettingsScreen() {
           )}
         </View>
       )}
+
+      {/* ── Appearance: always visible on the main page, not collapsible ── */}
+      <Text style={styles.appearanceLabel}>Appearance</Text>
+      <View style={styles.schemeSelector}>
+        {(["dark", "light"] as const).map((option) => {
+          const active = scheme === option;
+          return (
+            <Pressable
+              key={option}
+              style={[styles.schemeBtn, active && styles.schemeBtnActive]}
+              onPress={() => setScheme(option)}
+            >
+              <Ionicons
+                name={option === "dark" ? "moon" : "sunny"}
+                size={14}
+                color={active ? colors.accentText : colors.textMuted}
+              />
+              <Text style={[styles.schemeBtnText, active && styles.schemeBtnTextActive]}>{option}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {/* Chore notifications are sent by the server to the whole flat now, so
           there is no in-app preference left to flip — the real switch is the
@@ -472,7 +507,8 @@ function createStyles(colors: ThemeColors) {
     paddingHorizontal: 12,
     paddingVertical: 4,
   },
-  inputText: { fontFamily: fonts.bold, color: colors.text, fontSize: typeScale.body, paddingVertical: 8 },  smallButton: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  inputText: { fontFamily: fonts.bold, color: colors.text, fontSize: typeScale.body, paddingVertical: 8 },
+  smallButton: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16 },
   smallButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.caption, letterSpacing: 1, textTransform: "uppercase" },
   codeRow: {
     flexDirection: "row",
@@ -488,7 +524,20 @@ function createStyles(colors: ThemeColors) {
   code: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 5, color: colors.accent },
   invitedRow: { fontFamily: fonts.bold, fontSize: typeScale.body, paddingVertical: 3, color: colors.textMuted },
   memberCard: { flexDirection: "row", alignItems: "center", borderRadius: 12, padding: 12, gap: 12, marginTop: 8 },
-  memberName: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 0.3, textTransform: "uppercase", color: "rgba(0,0,0,0.75)" },  formFieldLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 10, marginBottom: 6 },
+  memberName: { fontFamily: fonts.bold, fontSize: typeScale.body, letterSpacing: 0.3, textTransform: "uppercase", color: "rgba(0,0,0,0.75)" },
+  formFieldLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 10, marginBottom: 6 },
+  inviteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+  },
+  inviteButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.caption, letterSpacing: 1, textTransform: "uppercase" },
+  appearanceLabel: { fontFamily: fonts.bold, fontSize: typeScale.caption, textTransform: "uppercase", letterSpacing: 1.5, color: colors.textMuted, marginTop: 24, marginBottom: 6 },
   schemeSelector: { flexDirection: "row", gap: 6 },
   schemeBtn: {
     flex: 1,
@@ -510,5 +559,6 @@ function createStyles(colors: ThemeColors) {
     letterSpacing: 0.5,
     color: colors.textMuted,
   },
-  schemeBtnTextActive: { color: colors.accentText },  });
+  schemeBtnTextActive: { color: colors.accentText },
+  });
 }

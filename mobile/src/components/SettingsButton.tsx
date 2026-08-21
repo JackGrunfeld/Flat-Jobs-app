@@ -4,8 +4,9 @@ import { useNavigation, type CompositeNavigationProp } from "@react-navigation/n
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import ProfileAvatar from "./ProfileAvatar";
 import type { ThemeColors } from "../theme/colors";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
 import type { RootStackParamList } from "../navigation/AppNavigator";
@@ -20,10 +21,13 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Every tab sets its title on a 31pt line starting 6pt below the safe area,
 // so the line's centre is at insets.top + 21.5. The button is 32 tall, which
-// puts its top half that height above the centre — that's what keeps the gear
+// puts its top half that height above the centre — that's what keeps the avatar
 // optically inline with the title instead of riding above it.
 export const HEADER_TITLE_TOP = 6;
 const TOP_OFFSET = (insetTop: number) => insetTop + HEADER_TITLE_TOP + 31 / 2 - 32 / 2;
+// Avatar disc that sits inside the 32×32 button — sized to leave a 2pt ring of
+// the button's surfaceAlt background, which reads as a subtle frame.
+const AVATAR_SIZE = 28;
 
 type Props = {
   // Lets a screen animate the button in and out — HomeScreen keeps it out of
@@ -35,12 +39,21 @@ type Props = {
   pointerEvents?: ViewProps["pointerEvents"];
 };
 
-// Small gear button pinned to the top-right corner of every tab screen —
-// replaces the old Settings tab, which now frees that slot for Bills.
+// Your profile avatar pinned to the top-right corner of every tab screen —
+// replaces the old Settings tab, which now frees that slot for Bills. Tapping
+// it opens Settings.
 export default function SettingsButton({ style, pointerEvents }: Props) {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+  const { currentUser, userFlat } = useAuth();
+
+  if (!currentUser) return null;
+
+  // User.photo and User.displayName live on the user row; the member colour
+  // lives on the flat's membership row, so join it out of userFlat.members.
+  // (Same pattern SettingsScreen already uses.)
+  const myColor = userFlat?.members.find((m) => m.userId === currentUser.id)?.color ?? null;
 
   return (
     <AnimatedPressable
@@ -52,8 +65,15 @@ export default function SettingsButton({ style, pointerEvents }: Props) {
       pointerEvents={pointerEvents}
       onPress={() => navigation.navigate("Settings")}
       hitSlop={10}
+      accessibilityLabel="Settings"
     >
-      <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
+      <ProfileAvatar
+        displayName={currentUser.displayName}
+        color={myColor}
+        photo={currentUser.photo}
+        size={AVATAR_SIZE}
+        fallbackOn={colors.text}
+      />
     </AnimatedPressable>
   );
 }
