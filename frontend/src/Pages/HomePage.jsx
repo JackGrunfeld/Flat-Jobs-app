@@ -152,7 +152,7 @@ export default function HomePage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.logo}>TICK-IT</h1>
+        <h1 className={styles.logo}>hommies</h1>
         <div className={styles.weekNav}>
           <button onClick={() => setWeek(w => Math.max(0, w - 1))}>←</button>
           <div className={styles.weekInfo}>

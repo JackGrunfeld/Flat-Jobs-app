@@ -48,7 +48,7 @@ export default function AuthPage() {
   return (
     <div className={styles.container}>
       <div className={styles.card}>
-        <h1 className={styles.logo}>TICK-IT</h1>
+        <h1 className={styles.logo}>hommies</h1>
         <p className={styles.tagline}>Flat life, organised.</p>
 
         <div className={styles.modeTabs}>

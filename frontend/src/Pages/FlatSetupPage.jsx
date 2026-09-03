@@ -130,7 +130,7 @@ export default function FlatSetupPage() {
   return (
     <div className={styles.container}>
       <div className={styles.inner}>
-        <h1 className={styles.logo}>TICK-IT</h1>
+        <h1 className={styles.logo}>hommies</h1>
         <p className={styles.welcome}>Hey, {userName}.</p>
 
         {/* CHOICE */}

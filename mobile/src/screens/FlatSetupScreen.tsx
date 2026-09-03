@@ -72,7 +72,7 @@ export default function FlatSetupScreen() {
 
   const handleCreate = () =>
     withBusy(async () => {
-      if (!flatName.trim()) throw new ApiError(400, "Enter a flat name");
+      if (!flatName.trim()) throw new ApiError(400, "Enter a hommies name");
       const { flat } = await flatService.createFlat(flatName.trim());
       setCreatedCode(flat.code);
       setView("created");
@@ -90,15 +90,15 @@ export default function FlatSetupScreen() {
       {view === "choice" && (
         <>
           <Text style={styles.title}>
-            Welcome!
+            Welcome to hommies!
             <Text style={[styles.titleCursor, { opacity: 1 ? 1 : 0 }]}>▌</Text>
           </Text>
-          <Text style={styles.subtitle}>Create a new flat, or join one with a code.</Text>
+          <Text style={styles.subtitle}>Create a new hommies, or join one with a code.</Text>
           <Pressable style={styles.primaryButton} onPress={() => setView("create")}>
-            <Text style={styles.primaryButtonText}>Create a flat</Text>
+            <Text style={styles.primaryButtonText}>Create hommies</Text>
           </Pressable>
           <Pressable style={styles.secondaryButton} onPress={() => setView("join")}>
-            <Text style={styles.secondaryButtonText}>Join a flat</Text>
+            <Text style={styles.secondaryButtonText}>Join hommies</Text>
           </Pressable>
           <Pressable onPress={() => logout()}>
             <Text style={styles.logoutText}>Sign out</Text>
@@ -108,7 +108,7 @@ export default function FlatSetupScreen() {
 
       {view === "create" && (
         <>
-          <Text style={styles.title}>Name your flat</Text>
+          <Text style={styles.title}>Name your hommies</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. 12 Main St"
@@ -128,7 +128,7 @@ export default function FlatSetupScreen() {
 
       {view === "created" && (
         <>
-          <Text style={styles.title}>Flat created!</Text>
+          <Text style={styles.title}>Hommies created!</Text>
           <Text style={styles.subtitle}>Share this code with your flatmates:</Text>
           <View style={styles.codeBox}>
             <Text style={styles.code}>{createdCode}</Text>
@@ -165,11 +165,31 @@ export default function FlatSetupScreen() {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 24, gap: 12, backgroundColor: colors.bg },
-  title: { fontFamily: fonts.bold, fontSize: typeScale.subheading, textAlign: "center", color: colors.text, marginBottom: 12 },
+  container: { flex: 1, justifyContent: "center", padding: 16, gap: 12, backgroundColor: colors.bg },
+  // The greeting reads the same as HomeScreen's typed greeting — main text
+  // colour, not the muted page-title treatment, so it feels like the app's
+  // voice rather than a settings header.
+  title: {
+    fontFamily: fonts.regular,
+    fontSize: 28,
+    letterSpacing: -0.7,
+    lineHeight: 31,
+    textAlign: "center",
+    color: colors.text,
+    marginBottom: 12,
+  },
   titleCursor: { color: colors.accentInk },
   subtitle: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted, textAlign: "center", marginBottom: 12 },
-  input: { fontFamily: fonts.regular, borderWidth: 1, borderColor: colors.inputBorder, borderRadius: 8, padding: 12, fontSize: typeScale.body, color: colors.text },
+  input: {
+    fontFamily: fonts.regular,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: typeScale.body,
+    color: colors.text,
+  },
   codeInput: { fontFamily: fonts.bold, textAlign: "center", letterSpacing: 4, fontSize: typeScale.body },
   error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
   primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
@@ -178,7 +198,15 @@ function createStyles(colors: ThemeColors) {
   secondaryButtonText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
   backText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 8 },
   logoutText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 24 },
-  codeBox: { backgroundColor: colors.surface, borderRadius: 12, padding: 20, alignItems: "center", marginBottom: 8 },
+  codeBox: {
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 20,
+    alignItems: "center",
+    marginBottom: 8,
+  },
   code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: colors.accentInk },
   });
 }

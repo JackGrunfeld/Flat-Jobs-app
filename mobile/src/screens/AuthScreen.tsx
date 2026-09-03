@@ -316,8 +316,7 @@ export default function AuthScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={styles.titleFlat}>flat</Text>
-        <Text style={styles.titleR}>R</Text>
+        <Text style={styles.titleBrand}>hommies</Text>
       </View>
       <Text style={styles.subtitle}>
         {typedSubtitleNodes(
@@ -426,36 +425,41 @@ export default function AuthScreen() {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-  container: { flex: 1, padding: 3, paddingTop: 72, backgroundColor: colors.bg },
-  titleRow: { flexDirection: "row", alignItems: "baseline", paddingLeft: 20 },
-  formSection: { flex: 1, justifyContent: "center", gap: 10, marginTop: 4, width: "82%", alignSelf: "center" },
+  container: { flex: 1, padding: 16, paddingTop: 72, backgroundColor: colors.bg },
+  titleRow: { alignItems: "center", paddingLeft: 4 },
+  formSection: { flex: 1, justifyContent: "center", gap: 10, marginTop: 4, width: "100%", alignSelf: "center" },
   emailPasswordGap: { height: 28 },
-  titleFlat: { fontFamily: fonts.regular, fontSize: typeScale.display, color: colors.text },
-  // Ink, not the fill: the R is a letter printed on the page, and in light
-  // mode the fill is mixed to sit *under* text rather than to be it.
-  titleR: { fontFamily: fonts.display, fontSize: typeScale.display, color: colors.accentInk, marginLeft: 2 },
+  // The app's page titles all use textMuted with the display face set at a
+  // quieter size; the brand lockup keeps that same muted colour so it reads
+  // as part of the app rather than a splash screen.
+  titleBrand: {
+    fontFamily: fonts.display,
+    fontSize: typeScale.display,
+    letterSpacing: 3,
+    color: colors.textMuted,
+  },
   subtitle: {
     fontFamily: fonts.subtitle,
     fontSize: typeScale.subheading,
     lineHeight: 30,
     height: 60,
-    letterSpacing: 3,
+    letterSpacing: 1,
     color: colors.textMuted,
     marginTop: 24,
-    paddingLeft: 20,
+    paddingLeft: 4,
   },
   subtitleBold: { fontFamily: fonts.subtitleBold },
   subtitleCycle: { fontFamily: fonts.subtitleBold, color: colors.text },
   subtitleCursor: { fontFamily: fonts.subtitleBold, color: colors.accentInk },
   error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
-  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 10, alignItems: "center", marginTop: 18},
+  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 18},
   primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
 
   secondaryButton: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: colors.accentInk,
     borderRadius: 8,
-    padding: 10,
+    padding: 14,
     alignItems: "center",
     marginTop: 4,
   },
@@ -482,7 +486,7 @@ function createStyles(colors: ThemeColors) {
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: colors.inputBorder,
     alignItems: "center",
     justifyContent: "center",

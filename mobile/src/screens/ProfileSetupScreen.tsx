@@ -274,8 +274,17 @@ export default function ProfileSetupScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
-    scrollContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: 32, paddingVertical: 48 },
-    title: { fontFamily: fonts.display, fontSize: typeScale.subheading, color: colors.text },
+    scrollContent: { flexGrow: 1, justifyContent: "center", padding: 16, paddingVertical: 48 },
+    // A welcome heading, not a navigation page title — uses the main text
+    // colour the way HomeScreen's greeting does, so it reads as the app's
+    // voice rather than a quiet settings header.
+    title: {
+      fontFamily: fonts.regular,
+      fontSize: 28,
+      letterSpacing: -0.7,
+      lineHeight: 31,
+      color: colors.text,
+    },
     subtitle: {
       fontFamily: fonts.regular,
       fontSize: typeScale.body,
@@ -295,7 +304,7 @@ function createStyles(colors: ThemeColors) {
     primaryButton: {
       backgroundColor: colors.accent,
       borderRadius: 8,
-      padding: 12,
+      padding: 14,
       alignItems: "center",
       marginTop: 18,
     },

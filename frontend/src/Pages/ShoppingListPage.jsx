@@ -107,7 +107,7 @@ export default function ShoppingListPage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1 className={styles.logo}>TICK-IT</h1>
+        <h1 className={styles.logo}>hommies</h1>
       </header>
 
       <main className={styles.content}>
