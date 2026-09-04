@@ -1,12 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Pressable, StyleSheet, View } from "react-native";
-import type { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { BottomTabBarProps, BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import RadialAddMenu from "../components/RadialAddMenu";
+import ThoughtBubble from "../components/ThoughtBubble";
 import { useAddAction, type AddActionRoute } from "./AddActionContext";
+import { useTabBarBubble } from "./TabBarBubbleContext";
+import { useTour, type TourTargetKey } from "./TourContext";
+import type { MainTabParamList } from "./MainTabNavigator";
+
+// Only these three tabs get a stop on the walkthrough — Home doesn't, so it
+// isn't in here.
+const TOUR_TAB_KEYS: Partial<Record<string, TourTargetKey>> = {
+  House: "tab-House",
+  Shopping: "tab-Shopping",
+  Bills: "tab-Bills",
+};
 
 const BAR_HEIGHT = 58;
 const PLUS_SIZE = 62;
@@ -43,11 +55,28 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { runAddAction } = useAddAction();
+  const { bubble, hideBubble } = useTabBarBubble();
+  const { registerTarget, setTabNavigator, radialOpen: tourRadialOpen } = useTour();
+  const plusRef = useRef<View>(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const spin = React.useRef(new Animated.Value(0)).current;
 
   const focusedRoute = state.routes[state.index].name as AddActionRoute;
+
+  // The bar owns the only navigation prop the walkthrough needs to switch
+  // tabs between its own steps — handed off once here rather than the tour
+  // reaching into navigation itself.
+  useEffect(() => {
+    setTabNavigator(navigation as unknown as BottomTabNavigationProp<MainTabParamList>);
+    return () => setTabNavigator(null);
+  }, [navigation, setTabNavigator]);
+
+  const measurePlus = () => {
+    plusRef.current?.measureInWindow((x, y, width, height) => {
+      registerTarget("plus-button", { x, y, width, height });
+    });
+  };
 
   const setMenu = (open: boolean) => {
     setMenuOpen(open);
@@ -55,8 +84,9 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
   };
 
   const onPlusPress = () => {
-    // Home has nothing of its own to add, so it offers the other three
-    // instead; every other tab goes straight to its own form.
+    // Home has four things it could mean by "+" — a chore, a shopping item,
+    // an expense or a calendar event — so it fans out the radial menu rather
+    // than picking one; every other tab goes straight to its own form.
     if (focusedRoute === "Home") setMenu(!menuOpen);
     else runAddAction(focusedRoute);
   };
@@ -83,16 +113,16 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
     };
 
     return (
-      <Pressable
+      <TabButton
         key={route.key}
-        style={styles.tab}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityState={focused ? { selected: true } : {}}
+        routeName={route.name}
+        icon={options.tabBarIcon?.({ focused, color, size: 24 })}
         accessibilityLabel={options.tabBarAccessibilityLabel ?? route.name}
-      >
-        {options.tabBarIcon?.({ focused, color, size: 24 })}
-      </Pressable>
+        focused={focused}
+        onPress={onPress}
+        registerTarget={registerTarget}
+        styles={styles}
+      />
     );
   };
 
@@ -107,12 +137,26 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
   return (
     <>
       <RadialAddMenu
-        visible={menuOpen}
+        // Unioned with the walkthrough's own request to have it open — the
+        // fan doesn't know or care which one asked, it just stays open while
+        // either is true.
+        visible={menuOpen || tourRadialOpen}
         // The raised "+" sits above the bar's midline, so the arc and its
         // shading pivot on the button's real centre rather than the bar's.
         originBottom={plusBottom + PLUS_SIZE / 2}
         onDismiss={() => setMenu(false)}
         onSelect={onRadialSelect}
+      />
+
+      <ThoughtBubble
+        visible={!!bubble}
+        message={bubble?.message ?? ""}
+        originBottom={plusBottom + PLUS_SIZE / 2}
+        onPress={() => {
+          bubble?.onPress();
+          hideBubble();
+        }}
+        onDismiss={hideBubble}
       />
 
       <View style={[styles.container, { paddingBottom: insets.bottom }]} pointerEvents="box-none">
@@ -127,8 +171,10 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
         <View style={[styles.collar, { bottom: plusBottom - COLLAR_PAD }]} pointerEvents="none" />
 
         <Pressable
+          ref={plusRef}
           style={[styles.plus, { bottom: plusBottom }]}
           onPress={onPlusPress}
+          onLayout={measurePlus}
           accessibilityLabel={menuOpen ? "Close add menu" : "Add"}
         >
           <Animated.View
@@ -143,6 +189,51 @@ export default function FlatTabBar({ state, descriptors, navigation }: BottomTab
         </Pressable>
       </View>
     </>
+  );
+}
+
+// Its own component, not an inline function called from a loop, so it can
+// hold the ref/measure pair the walkthrough needs — hooks can't live inside
+// a plain helper function called conditionally from render.
+function TabButton({
+  routeName,
+  icon,
+  accessibilityLabel,
+  focused,
+  onPress,
+  registerTarget,
+  styles,
+}: {
+  routeName: string;
+  icon: React.ReactNode;
+  accessibilityLabel: string;
+  focused: boolean;
+  onPress: () => void;
+  registerTarget: (key: TourTargetKey, rect: { x: number; y: number; width: number; height: number }) => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const ref = useRef<View>(null);
+  const tourKey = TOUR_TAB_KEYS[routeName];
+
+  const handleLayout = () => {
+    if (!tourKey) return;
+    ref.current?.measureInWindow((x, y, width, height) => {
+      registerTarget(tourKey, { x, y, width, height });
+    });
+  };
+
+  return (
+    <Pressable
+      ref={ref}
+      style={styles.tab}
+      onPress={onPress}
+      onLayout={handleLayout}
+      accessibilityRole="button"
+      accessibilityState={focused ? { selected: true } : {}}
+      accessibilityLabel={accessibilityLabel}
+    >
+      {icon}
+    </Pressable>
   );
 }
 

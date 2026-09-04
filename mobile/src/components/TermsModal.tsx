@@ -13,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
+import { LOGIN_ACCENT, onColor } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import { TERMS_LAST_UPDATED, TERMS_SECTIONS } from "../constants/terms";
@@ -104,13 +105,13 @@ export default function TermsModal({ visible, onAccept, onClose, readOnly = fals
             <>
               {!reachedEnd && <Text style={styles.hint}>Scroll to the end to continue</Text>}
               <Pressable
-                style={[styles.acceptButton, !canAccept && styles.acceptButtonDisabled]}
+                style={[styles.acceptButton, styles.acceptButtonLogin, !canAccept && styles.acceptButtonDisabled]}
                 onPress={onAccept}
                 disabled={!canAccept}
                 accessibilityRole="button"
                 accessibilityState={{ disabled: !canAccept }}
               >
-                <Text style={styles.acceptButtonText}>I Agree</Text>
+                <Text style={[styles.acceptButtonText, styles.acceptButtonTextLogin]}>I Agree</Text>
               </Pressable>
             </>
           )}
@@ -149,7 +150,11 @@ function createStyles(colors: ThemeColors) {
     },
     hint: { fontFamily: fonts.regular, fontSize: typeScale.caption, color: colors.textMuted, textAlign: "center" },
     acceptButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
+    // Overrides the theme accent for the sign-up "I Agree" button only — the
+    // read-only "Done" (opened from Settings) keeps the theme's own accent.
+    acceptButtonLogin: { backgroundColor: LOGIN_ACCENT },
     acceptButtonDisabled: { opacity: 0.4 },
     acceptButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
+    acceptButtonTextLogin: { color: onColor(LOGIN_ACCENT) },
   });
 }

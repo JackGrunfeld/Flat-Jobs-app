@@ -1,8 +1,8 @@
 import { apiFetch } from "./apiClient";
 import type { Flat } from "../types";
 
-export const createFlat = (name: string) =>
-  apiFetch<{ flat: Flat }>("/flats", { method: "POST", body: JSON.stringify({ name }) });
+export const createFlat = (name: string, address?: string) =>
+  apiFetch<{ flat: Flat }>("/flats", { method: "POST", body: JSON.stringify({ name, address }) });
 
 export const joinFlatByCode = (code: string) =>
   apiFetch<{ flat: Flat }>("/flats/join", { method: "POST", body: JSON.stringify({ code }) });
@@ -21,6 +21,19 @@ export const leaveFlat = (flatId: string) =>
 
 export const updateFlatName = (flatId: string, name: string) =>
   apiFetch<{ success: true }>(`/flats/${flatId}`, { method: "PATCH", body: JSON.stringify({ name }) });
+
+export type HomeInfoFields = {
+  address?: string;
+  wifiName?: string;
+  wifiPassword?: string;
+  landlordName?: string;
+  landlordPhone?: string;
+  landlordEmail?: string;
+  importantInfo?: string;
+};
+
+export const updateFlatHomeInfo = (flatId: string, fields: HomeInfoFields) =>
+  apiFetch<{ success: true }>(`/flats/${flatId}/home-info`, { method: "PATCH", body: JSON.stringify(fields) });
 
 export const updateMemberColor = (flatId: string, color: string) =>
   apiFetch<{ success: true }>(`/flats/${flatId}/members/me`, { method: "PATCH", body: JSON.stringify({ color }) });

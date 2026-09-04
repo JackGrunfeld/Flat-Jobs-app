@@ -29,6 +29,13 @@ const DEV_FLAT: Flat = {
   ownerId: "dev-user",
   members: [{ userId: "dev-user", displayName: "Dev User", color: "#4A90E2", birthday: null, photo: null }],
   invitedEmails: [],
+  address: null,
+  wifiName: null,
+  wifiPassword: null,
+  landlordName: null,
+  landlordPhone: null,
+  landlordEmail: null,
+  importantInfo: null,
 };
 
 export default function RootNavigator() {

@@ -5,9 +5,11 @@ import * as flatService from "../services/flatService";
 import { ApiError } from "../services/apiClient";
 import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
 import { useTheme } from "../context/ThemeContext";
+import { LOGIN_ACCENT, onColor } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
+import AddressAutocompleteInput from "../components/AddressAutocompleteInput";
 
 type FlowView = "choice" | "create" | "created" | "join";
 
@@ -34,6 +36,7 @@ export default function FlatSetupScreen() {
   const { refreshFlat, logout } = useAuth();
   const [view, setView] = useState<FlowView>("choice");
   const [flatName, setFlatName] = useState("");
+  const [flatAddress, setFlatAddress] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [createdCode, setCreatedCode] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,7 +76,7 @@ export default function FlatSetupScreen() {
   const handleCreate = () =>
     withBusy(async () => {
       if (!flatName.trim()) throw new ApiError(400, "Enter a hommies name");
-      const { flat } = await flatService.createFlat(flatName.trim());
+      const { flat } = await flatService.createFlat(flatName.trim(), flatAddress.trim() || undefined);
       setCreatedCode(flat.code);
       setView("created");
     });
@@ -116,9 +119,18 @@ export default function FlatSetupScreen() {
             value={flatName}
             onChangeText={setFlatName}
           />
+          {/* Optional — feeds Home Hub's Address box on the first day, rather
+              than leaving it blank until someone fills it in from Settings. */}
+          <AddressAutocompleteInput
+            style={styles.input}
+            placeholder="Flat address (optional)"
+            placeholderTextColor={colors.textMuted}
+            value={flatAddress}
+            onChangeText={setFlatAddress}
+          />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable style={styles.primaryButton} onPress={handleCreate} disabled={busy}>
-            {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.primaryButtonText}>Create</Text>}
+            {busy ? <ActivityIndicator color={onColor(LOGIN_ACCENT)} /> : <Text style={styles.primaryButtonText}>Create</Text>}
           </Pressable>
           <Pressable onPress={() => setView("choice")}>
             <Text style={styles.backText}>Back</Text>
@@ -152,7 +164,7 @@ export default function FlatSetupScreen() {
           />
           {error && <Text style={styles.error}>{error}</Text>}
           <Pressable style={styles.primaryButton} onPress={handleJoin} disabled={busy}>
-            {busy ? <ActivityIndicator color={colors.accentText} /> : <Text style={styles.primaryButtonText}>Join</Text>}
+            {busy ? <ActivityIndicator color={onColor(LOGIN_ACCENT)} /> : <Text style={styles.primaryButtonText}>Join</Text>}
           </Pressable>
           <Pressable onPress={() => setView("choice")}>
             <Text style={styles.backText}>Back</Text>
@@ -178,7 +190,7 @@ function createStyles(colors: ThemeColors) {
     color: colors.text,
     marginBottom: 12,
   },
-  titleCursor: { color: colors.accentInk },
+  titleCursor: { color: LOGIN_ACCENT },
   subtitle: { fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted, textAlign: "center", marginBottom: 12 },
   input: {
     fontFamily: fonts.regular,
@@ -192,10 +204,10 @@ function createStyles(colors: ThemeColors) {
   },
   codeInput: { fontFamily: fonts.bold, textAlign: "center", letterSpacing: 4, fontSize: typeScale.body },
   error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
-  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center" },
-  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
-  secondaryButton: { borderWidth: 1, borderColor: colors.accentInk, borderRadius: 8, padding: 14, alignItems: "center" },
-  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
+  primaryButton: { backgroundColor: LOGIN_ACCENT, borderRadius: 8, padding: 14, alignItems: "center" },
+  primaryButtonText: { fontFamily: fonts.bold, color: onColor(LOGIN_ACCENT), fontSize: typeScale.body },
+  secondaryButton: { borderWidth: 1, borderColor: LOGIN_ACCENT, borderRadius: 8, padding: 14, alignItems: "center" },
+  secondaryButtonText: { fontFamily: fonts.bold, color: LOGIN_ACCENT, fontSize: typeScale.body },
   backText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 8 },
   logoutText: { fontFamily: fonts.regular, color: colors.textMuted, textAlign: "center", marginTop: 24 },
   codeBox: {
@@ -207,6 +219,6 @@ function createStyles(colors: ThemeColors) {
     alignItems: "center",
     marginBottom: 8,
   },
-  code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: colors.accentInk },
+  code: { fontFamily: fonts.bold, fontSize: typeScale.subheading, letterSpacing: 6, color: LOGIN_ACCENT },
   });
 }

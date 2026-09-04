@@ -1,5 +1,5 @@
-import React from "react";
-import { Animated, Pressable, StyleSheet, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
+import React, { useRef } from "react";
+import { Animated, Pressable, StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from "react-native";
 import { useNavigation, type CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
@@ -10,6 +10,7 @@ import ProfileAvatar from "./ProfileAvatar";
 import type { ThemeColors } from "../theme/colors";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
 import type { RootStackParamList } from "../navigation/AppNavigator";
+import { useTour } from "../navigation/TourContext";
 
 // Settings lives one level up, in the root stack that wraps the tab
 // navigator — CompositeNavigationProp is what lets a screen inside a tab
@@ -47,6 +48,8 @@ export default function SettingsButton({ style, pointerEvents }: Props) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { currentUser, userFlat } = useAuth();
+  const { registerTarget } = useTour();
+  const ref = useRef<View>(null);
 
   if (!currentUser) return null;
 
@@ -55,14 +58,22 @@ export default function SettingsButton({ style, pointerEvents }: Props) {
   // (Same pattern SettingsScreen already uses.)
   const myColor = userFlat?.members.find((m) => m.userId === currentUser.id)?.color ?? null;
 
+  const handleLayout = () => {
+    ref.current?.measureInWindow((x, y, width, height) => {
+      registerTarget("settings-button", { x, y, width, height });
+    });
+  };
+
   return (
     <AnimatedPressable
+      ref={ref}
       style={[
         styles.button,
         { top: TOP_OFFSET(insets.top), backgroundColor: colors.surfaceAlt },
         style,
       ]}
       pointerEvents={pointerEvents}
+      onLayout={handleLayout}
       onPress={() => navigation.navigate("Settings")}
       hitSlop={10}
       accessibilityLabel="Settings"

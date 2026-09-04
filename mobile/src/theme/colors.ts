@@ -124,6 +124,12 @@ export const CAL_PLATE = "#1b1f2a";
 // the weekday header's today column. Shared with the chores day strip so
 // "today" reads the same everywhere.
 export const CAL_RED = "#ff5a5f";
+// The sign-up/login flow's own accent — fixed across both schemes (the
+// screen's own background is fixed white too, see AuthScreen), used in place
+// of `colors.accent`/`accentInk`/`accentText` for every accented element on
+// that screen and the terms sheet it opens: buttons, focused input borders,
+// the checkbox fill, and the terms link.
+export const LOGIN_ACCENT = "#D6BAF0";
 // Repaints the accent in the signed-in member's own colour.
 //
 // A pastel is bright enough to sit *under* dark text but far too pale to *be*

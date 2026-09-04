@@ -25,6 +25,13 @@ async function loadFlatDto(db: D1Database, flatId: string) {
     code: string;
     owner_id: string;
     created_at: number;
+    address: string | null;
+    wifi_name: string | null;
+    wifi_password: string | null;
+    landlord_name: string | null;
+    landlord_phone: string | null;
+    landlord_email: string | null;
+    important_info: string | null;
   }>();
   if (!flat) return null;
 
@@ -51,6 +58,13 @@ async function loadFlatDto(db: D1Database, flatId: string) {
     name: flat.name,
     code: flat.code,
     ownerId: flat.owner_id,
+    address: flat.address,
+    wifiName: flat.wifi_name,
+    wifiPassword: flat.wifi_password,
+    landlordName: flat.landlord_name,
+    landlordPhone: flat.landlord_phone,
+    landlordEmail: flat.landlord_email,
+    importantInfo: flat.important_info,
     members: (memberRows ?? []).map((m) => ({
       userId: m.user_id,
       displayName: m.display_name,
@@ -69,7 +83,7 @@ async function getUserFlatId(db: D1Database, userId: string): Promise<string | n
 
 flats.post("/", async (c) => {
   const userId = c.get("userId");
-  const { name } = await c.req.json<{ name?: string }>();
+  const { name, address } = await c.req.json<{ name?: string; address?: string }>();
   if (!name?.trim()) throw new HttpError(400, "name is required");
 
   if (await getUserFlatId(c.env.DB, userId)) {
@@ -81,12 +95,13 @@ flats.post("/", async (c) => {
   const timestamp = now();
 
   await c.env.DB.batch([
-    c.env.DB.prepare("INSERT INTO flats (id, name, code, owner_id, created_at) VALUES (?, ?, ?, ?, ?)").bind(
+    c.env.DB.prepare("INSERT INTO flats (id, name, code, owner_id, created_at, address) VALUES (?, ?, ?, ?, ?, ?)").bind(
       flatId,
       name.trim(),
       code,
       userId,
       timestamp,
+      address?.trim() || null,
     ),
     c.env.DB.prepare("INSERT INTO flat_members (flat_id, user_id, joined_at) VALUES (?, ?, ?)").bind(
       flatId,
@@ -177,6 +192,46 @@ flats.patch("/:flatId", requireFlatMembership, async (c) => {
   const { name } = await c.req.json<{ name?: string }>();
   if (!name?.trim()) throw new HttpError(400, "name is required");
   await c.env.DB.prepare("UPDATE flats SET name = ? WHERE id = ?").bind(name.trim(), c.req.param("flatId")).run();
+  return c.json({ success: true });
+});
+
+// Home Hub's free-text fields — address, wifi, landlord, important info.
+// Each is optional and independently updatable: the client sends only the
+// box that changed, and an empty string clears that field back to null
+// rather than leaving a stale value nothing on the page can reach anymore.
+flats.patch("/:flatId/home-info", requireFlatMembership, async (c) => {
+  const body = await c.req.json<{
+    address?: string;
+    wifiName?: string;
+    wifiPassword?: string;
+    landlordName?: string;
+    landlordPhone?: string;
+    landlordEmail?: string;
+    importantInfo?: string;
+  }>();
+
+  const columns: Record<string, string> = {
+    address: "address",
+    wifiName: "wifi_name",
+    wifiPassword: "wifi_password",
+    landlordName: "landlord_name",
+    landlordPhone: "landlord_phone",
+    landlordEmail: "landlord_email",
+    importantInfo: "important_info",
+  };
+
+  const sets: string[] = [];
+  const values: (string | null)[] = [];
+  for (const [key, column] of Object.entries(columns)) {
+    if (key in body) {
+      sets.push(`${column} = ?`);
+      values.push(body[key as keyof typeof body]?.trim() || null);
+    }
+  }
+  if (sets.length === 0) throw new HttpError(400, "nothing to update");
+
+  values.push(c.req.param("flatId"));
+  await c.env.DB.prepare(`UPDATE flats SET ${sets.join(", ")} WHERE id = ?`).bind(...values).run();
   return c.json({ success: true });
 });
 

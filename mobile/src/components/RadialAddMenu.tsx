@@ -8,15 +8,18 @@ import type { AddActionRoute } from "../navigation/AddActionContext";
 // Each item is swung out on an arm pinned to the "+": the arm rotates to its
 // angle while extending to its length, so the bubble travels a curved path
 // rather than a straight line. Angles are clockwise from "straight left".
-const ANGLES = [30, 70, 110, 150];
-const RADIUS = 112;
+// Exported so TourContext can work out where each bubble ends up on screen
+// without needing to measure a mid-animation transform — see
+// computeRadialTargets there.
+export const ANGLES = [30, 70, 110, 150];
+export const RADIUS = 112;
 const STAGGER_MS = 45;
 const OPEN_MS = 260;
 const CLOSE_MS = 180;
 
 // The arm is exactly the bubble's box, centred on the "+", so rotation pivots
 // on the bubble's own centre — no transform-origin needed.
-const BUBBLE = 56;
+export const BUBBLE = 56;
 
 export type RadialItem = {
   route: AddActionRoute;
@@ -26,11 +29,6 @@ export type RadialItem = {
 };
 
 export const RADIAL_ITEMS: RadialItem[] = [
-  {
-    route: "Home",
-    label: "Calendar",
-    icon: (color, size) => <Ionicons name="calendar" size={size} color={color} />,
-  },
   {
     route: "House",
     label: "Chore",
@@ -45,6 +43,11 @@ export const RADIAL_ITEMS: RadialItem[] = [
     route: "Bills",
     label: "Expense",
     icon: (color, size) => <MaterialCommunityIcons name="currency-usd" size={size} color={color} />,
+  },
+  {
+    route: "Home",
+    label: "Event",
+    icon: (color, size) => <Ionicons name="calendar-outline" size={size} color={color} />,
   },
 ];
 

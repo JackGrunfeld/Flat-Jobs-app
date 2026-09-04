@@ -18,6 +18,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { ApiError } from "../services/apiClient";
 import { PICKER_COUNTRIES, countryName } from "../constants/countries";
+import { LOGIN_ACCENT, onColor } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
@@ -62,7 +63,7 @@ export default function ProfileSetupScreen() {
 
   const inputTheme = useMemo(
     () => ({
-      accentColor: colors.accentInk,
+      accentColor: LOGIN_ACCENT,
       idleBorderColor: colors.inputBorder,
       idleLabelColor: colors.textMuted,
       idleTextColor: colors.textMuted,
@@ -187,7 +188,7 @@ export default function ProfileSetupScreen() {
 
           <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={submitting}>
             {submitting ? (
-              <ActivityIndicator color={colors.accentText} />
+              <ActivityIndicator color={onColor(LOGIN_ACCENT)} />
             ) : (
               <Text style={styles.primaryButtonText}>Continue</Text>
             )}
@@ -259,7 +260,7 @@ export default function ProfileSetupScreen() {
                 >
                   <Text style={styles.countryName}>{item.name}</Text>
                   {country === item.code && (
-                    <Ionicons name="checkmark" size={18} color={colors.accentInk} />
+                    <Ionicons name="checkmark" size={18} color={LOGIN_ACCENT} />
                   )}
                 </Pressable>
               )}
@@ -302,13 +303,13 @@ function createStyles(colors: ThemeColors) {
     },
     error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center", marginTop: 4 },
     primaryButton: {
-      backgroundColor: colors.accent,
+      backgroundColor: LOGIN_ACCENT,
       borderRadius: 8,
       padding: 14,
       alignItems: "center",
       marginTop: 18,
     },
-    primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
+    primaryButtonText: { fontFamily: fonts.bold, color: onColor(LOGIN_ACCENT), fontSize: typeScale.body },
     linkButton: { alignItems: "center", paddingVertical: 12 },
     linkButtonText: { fontFamily: fonts.regular, color: colors.textMuted, fontSize: typeScale.body },
 
@@ -330,7 +331,7 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 12,
     },
     sheetDoneButton: { alignItems: "center", paddingVertical: 14, marginHorizontal: 16 },
-    sheetDoneText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
+    sheetDoneText: { fontFamily: fonts.bold, color: LOGIN_ACCENT, fontSize: typeScale.body },
     countryRow: {
       flexDirection: "row",
       alignItems: "center",

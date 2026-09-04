@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { View, Text, Pressable, StyleSheet, ScrollView, Animated } from "react-native";
+import { View, Text, Pressable, StyleSheet, Animated } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
@@ -13,15 +13,17 @@ import { buildDisplayNames } from "../utils/displayNames";
 import { useTheme } from "../context/ThemeContext";
 import type { ThemeColors } from "../theme/colors";
 import { inkFor } from "../theme/cardInk";
+import { hexToRgba } from "../theme/colorMath";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
 import RevealTile from "../components/RevealTile";
-import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
+import { useTabsHeaderSpace } from "../components/TabsHeader";
 import ChoreFormModal, { FREQUENCIES, type ChoreFormValues } from "../components/ChoreFormModal";
 import DayStrip from "../components/DayStrip";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
 import { Ionicons } from "@expo/vector-icons";
+import { markChoresSeen } from "../storage/notificationSeen";
 import type { Chore, Completion } from "../types";
 
 type Assignment = {
@@ -147,13 +149,23 @@ function Avatar({
 const REVEAL_STEP = 60;
 const MAX_STAGGER = 6;
 
+// How tall the fade under the fixed title/day-strip header is — content
+// scrolling up dims out across this band instead of vanishing the instant it
+// reaches the header's hard edge.
+const HEADER_FADE_HEIGHT = 24;
+
 export default function HouseScreen() {
-  const insets = useSafeAreaInsets();
   // The tab bar floats over the page, so the last row needs
-  // somewhere to scroll clear to.
+  // somewhere to scroll clear to. TabsHeader floats over the top the same
+  // way, so the first row needs matching clearance up there too.
   const tabBarSpace = useTabBarSpace();
+  const headerSpace = useTabsHeaderSpace();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // Drives the header fade below — invisible at rest, so it only dims
+  // content once something's actually scrolled up under the fixed
+  // title/day-strip, tied to the live scroll offset rather than always-on.
+  const scrollY = useRef(new Animated.Value(0)).current;
   const { currentUser, userFlat } = useAuth();
   const [chores, setChores] = useState<Chore[]>([]);
   const [completions, setCompletions] = useState<Completion[]>([]);
@@ -171,14 +183,17 @@ export default function HouseScreen() {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!userFlat) return;
+    if (!userFlat || !currentUser) return;
     const [{ chores }, completionsRes] = await Promise.all([
       choresService.fetchChores(userFlat.id),
       completionsService.fetchCompletions(userFlat.id),
     ]);
     setChores(chores);
     setCompletions(completionsRes.completions);
-  }, [userFlat]);
+    // Opening this tab is what "reads" a chore change — the Home screen's
+    // notification count stops counting it from here on.
+    markChoresSeen(userFlat.id, currentUser.id, chores, completionsRes.completions);
+  }, [userFlat, currentUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -352,12 +367,173 @@ export default function HouseScreen() {
 
   if (!userFlat) return null;
 
+  // Split the roster so the signed-in user's own card leads under its own
+  // heading, with the rest of the flat's cards grouped underneath — rather
+  // than one undifferentiated stack where you have to hunt for your row.
+  const myRosterCard = rosterCards.find((card) => card.member.userId === currentUser?.id);
+  const otherRosterCards = rosterCards.filter((card) => card.member.userId !== currentUser?.id);
+
+  const renderRosterCard = (card: (typeof rosterCards)[number], index: number) => {
+    const offDuty = card.items.length === 0;
+    const expanded = expandedUserId === card.member.userId;
+    const background = card.member.color ?? colors.accent;
+    const ink = inkFor(background);
+    // Each job is its own outlined chip on one line — the row clips
+    // rather than wraps, so every card keeps the same height.
+    const taskNames = card.main.length === 0 ? ["Off Duty"] : card.main.map((i) => i.chore.name);
+    const shownNames = taskNames.slice(0, MAX_TASK_CHIPS);
+    const truncated = taskNames.length > shownNames.length;
+    // A single weekly chore says everything on the front of the card, so
+    // the drop-down shows its description instead of repeating the name.
+    const showLoneDescription = card.main.length === 1 && card.monthly.length === 0;
+
+    return (
+      <RevealTile key={card.member.userId} delay={REVEAL_STEP * (1 + Math.min(index, MAX_STAGGER))}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.choreCard,
+            { backgroundColor: background },
+            pressed && !offDuty && styles.choreCardPressed,
+          ]}
+          onPress={() => !offDuty && setExpandedUserId(expanded ? null : card.member.userId)}
+          disabled={offDuty}
+        >
+          <View style={styles.cardHeaderRow}>
+            <Avatar member={card.member} size={CARD_AVATAR} fg={ink.strong} />
+            <View style={styles.choreInfo}>
+              <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
+                {card.displayName}
+              </Text>
+              <View style={styles.choreTaskRow}>
+                {shownNames.map((name) => (
+                  <View key={name} style={[styles.taskChip, { borderColor: ink.body }]}>
+                    <Text style={[styles.taskChipText, { color: ink.body }]} numberOfLines={1}>
+                      {name}
+                    </Text>
+                  </View>
+                ))}
+                {truncated && <Text style={[styles.taskOverflow, { color: ink.muted }]}>…</Text>}
+                {card.monthly.length > 0 && (
+                  <Text style={[styles.monthlyCardBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                    M
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* One job: the drop-down only carries its description, so the
+                box stays the way to tick it. Several: it's a read-out of
+                how many are done, ticked off individually below, because a
+                single tap clearing four jobs at once was too easy to hit. */}
+            {card.main.length === 1 && (
+              <Pressable
+                onPress={() => setDone(card.main, !card.allMainDone)}
+                hitSlop={10}
+                style={[
+                  styles.checkbox,
+                  { borderColor: ink.strong },
+                  card.allMainDone && { backgroundColor: ink.strong },
+                ]}
+              >
+                {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+              </Pressable>
+            )}
+
+            {card.main.length > 1 && (
+              <View style={[styles.checkbox, { borderColor: ink.strong }]}>
+                <PieFill
+                  styles={styles}
+                  progress={card.mainDone / card.main.length}
+                  color={ink.strong}
+                />
+                {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+              </View>
+            )}
+          </View>
+
+          {expanded && (
+            <View style={[styles.details, { borderTopColor: ink.hairline }]}>
+              {showLoneDescription && (
+                <Text style={[styles.detailText, { color: ink.body }]}>
+                  {card.main[0].chore.description?.trim() || "No description added."}
+                </Text>
+              )}
+
+              {!showLoneDescription &&
+                card.main.map((item, i) => (
+                  <View
+                    key={item.chore.id}
+                    style={[
+                      styles.subTaskRow,
+                      { borderBottomColor: ink.hairline },
+                      i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast,
+                    ]}
+                  >
+                    <View style={styles.subTaskInfo}>
+                      <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
+                      {!!item.chore.description?.trim() && (
+                        <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
+                      )}
+                    </View>
+                    <Pressable
+                      onPress={() => setDone([item], !item.done)}
+                      hitSlop={10}
+                      style={[
+                        styles.checkbox,
+                        { borderColor: ink.strong },
+                        item.done && { backgroundColor: ink.strong },
+                      ]}
+                    >
+                      {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                    </Pressable>
+                  </View>
+                ))}
+
+              {card.monthly.map((item, i) => (
+                <View
+                  key={item.chore.id}
+                  style={[
+                    styles.subTaskRow,
+                    { borderBottomColor: ink.hairline },
+                    i === card.monthly.length - 1 && styles.subTaskRowLast,
+                  ]}
+                >
+                  <View style={styles.subTaskInfo}>
+                    <Text style={[styles.monthlyBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
+                      Monthly
+                    </Text>
+                    <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
+                    {!!item.chore.description?.trim() && (
+                      <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
+                    )}
+                  </View>
+                  <Pressable
+                    onPress={() => setDone([item], !item.done)}
+                    hitSlop={10}
+                    style={[
+                      styles.checkbox,
+                      { borderColor: ink.strong },
+                      item.done && { backgroundColor: ink.strong },
+                    ]}
+                  >
+                    {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
+        </Pressable>
+      </RevealTile>
+    );
+  };
+
   return (
     <View style={styles.root}>
-      <ScrollView
-        style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}
-        contentContainerStyle={{ paddingBottom: tabBarSpace }}
-      >
+      {/* Title and day strip are chrome, not content — pinned above the
+          ScrollView rather than scrolling away with the roster, so the week
+          stays reachable no matter how far down the chore list you've
+          scrolled. */}
+      <View style={[styles.fixedHeader, { paddingTop: headerSpace }]}>
         <Text style={styles.pageTitle}>Chores</Text>
 
         <RevealTile delay={0}>
@@ -377,160 +553,33 @@ export default function HouseScreen() {
           {previewDate.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} ·{" "}
           {doneCount}/{assignmentsForDay.length} done
         </Text>
+      </View>
 
-        {rosterCards.map((card, index) => {
-          const offDuty = card.items.length === 0;
-          const expanded = expandedUserId === card.member.userId;
-          const background = card.member.color ?? colors.accent;
-          const ink = inkFor(background);
-          // Each job is its own outlined chip on one line — the row clips
-          // rather than wraps, so every card keeps the same height.
-          const taskNames = card.main.length === 0 ? ["Off Duty"] : card.main.map((i) => i.chore.name);
-          const shownNames = taskNames.slice(0, MAX_TASK_CHIPS);
-          const truncated = taskNames.length > shownNames.length;
-          // A single weekly chore says everything on the front of the card, so
-          // the drop-down shows its description instead of repeating the name.
-          const showLoneDescription = card.main.length === 1 && card.monthly.length === 0;
+      {/* The scroll area itself, with a fade masking its own top edge so the
+          roster dims out as it scrolls up under the fixed header above
+          instead of being clipped the instant it reaches it. Faded in off
+          the live scroll offset — invisible at rest, so nothing dims before
+          anything's actually scrolled. */}
+      <View style={styles.scrollArea}>
+        <Animated.ScrollView
+          style={styles.container}
+          contentContainerStyle={{ paddingBottom: tabBarSpace }}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+          scrollEventThrottle={16}
+        >
+        {myRosterCard && (
+          <>
+            <Text style={styles.rosterSectionLabel}>Your Jobs</Text>
+            {renderRosterCard(myRosterCard, 0)}
+          </>
+        )}
 
-          return (
-            <RevealTile key={card.member.userId} delay={REVEAL_STEP * (1 + Math.min(index, MAX_STAGGER))}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.choreCard,
-                  { backgroundColor: background },
-                  pressed && !offDuty && styles.choreCardPressed,
-                ]}
-                onPress={() => !offDuty && setExpandedUserId(expanded ? null : card.member.userId)}
-                disabled={offDuty}
-              >
-                <View style={styles.cardHeaderRow}>
-                  <Avatar member={card.member} size={CARD_AVATAR} fg={ink.strong} />
-                  <View style={styles.choreInfo}>
-                    <Text style={[styles.choreName, { color: ink.strong }]} numberOfLines={1}>
-                      {card.displayName}
-                    </Text>
-                    <View style={styles.choreTaskRow}>
-                      {shownNames.map((name) => (
-                        <View key={name} style={[styles.taskChip, { borderColor: ink.body }]}>
-                          <Text style={[styles.taskChipText, { color: ink.body }]} numberOfLines={1}>
-                            {name}
-                          </Text>
-                        </View>
-                      ))}
-                      {truncated && <Text style={[styles.taskOverflow, { color: ink.muted }]}>…</Text>}
-                      {card.monthly.length > 0 && (
-                        <Text style={[styles.monthlyCardBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
-                          M
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-
-                  {/* One job: the drop-down only carries its description, so the
-                      box stays the way to tick it. Several: it's a read-out of
-                      how many are done, ticked off individually below, because a
-                      single tap clearing four jobs at once was too easy to hit. */}
-                  {card.main.length === 1 && (
-                    <Pressable
-                      onPress={() => setDone(card.main, !card.allMainDone)}
-                      hitSlop={10}
-                      style={[
-                        styles.checkbox,
-                        { borderColor: ink.strong },
-                        card.allMainDone && { backgroundColor: ink.strong },
-                      ]}
-                    >
-                      {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                    </Pressable>
-                  )}
-
-                  {card.main.length > 1 && (
-                    <View style={[styles.checkbox, { borderColor: ink.strong }]}>
-                      <PieFill
-                        styles={styles}
-                        progress={card.mainDone / card.main.length}
-                        color={ink.strong}
-                      />
-                      {card.allMainDone && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                    </View>
-                  )}
-                </View>
-
-                {expanded && (
-                  <View style={[styles.details, { borderTopColor: ink.hairline }]}>
-                    {showLoneDescription && (
-                      <Text style={[styles.detailText, { color: ink.body }]}>
-                        {card.main[0].chore.description?.trim() || "No description added."}
-                      </Text>
-                    )}
-
-                    {!showLoneDescription &&
-                      card.main.map((item, i) => (
-                        <View
-                          key={item.chore.id}
-                          style={[
-                            styles.subTaskRow,
-                            { borderBottomColor: ink.hairline },
-                            i === card.main.length - 1 && card.monthly.length === 0 && styles.subTaskRowLast,
-                          ]}
-                        >
-                          <View style={styles.subTaskInfo}>
-                            <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
-                            {!!item.chore.description?.trim() && (
-                              <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
-                            )}
-                          </View>
-                          <Pressable
-                            onPress={() => setDone([item], !item.done)}
-                            hitSlop={10}
-                            style={[
-                              styles.checkbox,
-                              { borderColor: ink.strong },
-                              item.done && { backgroundColor: ink.strong },
-                            ]}
-                          >
-                            {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                          </Pressable>
-                        </View>
-                      ))}
-
-                    {card.monthly.map((item, i) => (
-                      <View
-                        key={item.chore.id}
-                        style={[
-                          styles.subTaskRow,
-                          { borderBottomColor: ink.hairline },
-                          i === card.monthly.length - 1 && styles.subTaskRowLast,
-                        ]}
-                      >
-                        <View style={styles.subTaskInfo}>
-                          <Text style={[styles.monthlyBadge, { color: ink.onStrong, backgroundColor: ink.strong }]}>
-                            Monthly
-                          </Text>
-                          <Text style={[styles.subTaskName, { color: ink.body }]}>{item.chore.name}</Text>
-                          {!!item.chore.description?.trim() && (
-                            <Text style={[styles.subTaskDesc, { color: ink.muted }]}>{item.chore.description}</Text>
-                          )}
-                        </View>
-                        <Pressable
-                          onPress={() => setDone([item], !item.done)}
-                          hitSlop={10}
-                          style={[
-                            styles.checkbox,
-                            { borderColor: ink.strong },
-                            item.done && { backgroundColor: ink.strong },
-                          ]}
-                        >
-                          {item.done && <Text style={[styles.checkmark, { color: ink.onStrong }]}>✓</Text>}
-                        </Pressable>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </Pressable>
-            </RevealTile>
-          );
-        })}
+        {otherRosterCards.length > 0 && (
+          <>
+            <Text style={styles.rosterSectionLabel}>Everyone's Jobs</Text>
+            {otherRosterCards.map((card, index) => renderRosterCard(card, index + 1))}
+          </>
+        )}
 
         {chores.length === 0 && <Text style={styles.empty}>No chores yet — tap + to add one.</Text>}
 
@@ -612,7 +661,21 @@ export default function HouseScreen() {
               ))}
           </RevealTile>
         )}
-      </ScrollView>
+        </Animated.ScrollView>
+
+        {/* Overlaps the ScrollView's own top edge rather than sitting in its
+            content, so it masks whatever's scrolled underneath it without
+            taking up any of the roster's own space. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.headerFade,
+            { opacity: scrollY.interpolate({ inputRange: [0, HEADER_FADE_HEIGHT], outputRange: [0, 1], extrapolate: "clamp" }) },
+          ]}
+        >
+          <LinearGradient colors={[colors.bg, hexToRgba(colors.bg, 0)]} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+      </View>
 
       <ChoreFormModal
         visible={choreForm.open}
@@ -621,7 +684,6 @@ export default function HouseScreen() {
         onClose={() => setChoreForm({ open: false, chore: null })}
         onSubmit={submitChoreForm}
       />
-      <SettingsButton />
     </View>
   );
 }
@@ -629,7 +691,24 @@ export default function HouseScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    container: { flex: 1, padding: 16, backgroundColor: colors.bg },
+    // Sits above the ScrollView in normal flow (not floating over it) — the
+    // roster starts right where this ends, so there's no overlap to allow
+    // for.
+    fixedHeader: { paddingHorizontal: 16, backgroundColor: colors.bg },
+    // Positions the fade below relative to the ScrollView's own top edge
+    // rather than the screen's.
+    scrollArea: { flex: 1 },
+    container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
+    // Sits right over the ScrollView's top edge — content dims out across
+    // this band as it scrolls up underneath it, instead of being clipped the
+    // instant it reaches the fixed header above.
+    headerFade: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: HEADER_FADE_HEIGHT,
+    },
     pageTitle: {
       fontFamily: fonts.regular,
       fontSize: 28,
@@ -651,6 +730,18 @@ function createStyles(colors: ThemeColors) {
       textTransform: "uppercase",
       color: colors.textMuted,
       marginBottom: 16,
+    },
+    // Small labels introducing each half of the roster — the signed-in
+    // user's own card first, then the rest of the flat's — so the stack
+    // reads as two grouped sections rather than one undifferentiated list.
+    rosterSectionLabel: {
+      fontFamily: fonts.bold,
+      fontSize: typeScale.caption,
+      textTransform: "uppercase",
+      letterSpacing: 1.5,
+      color: colors.textMuted,
+      marginTop: 4,
+      marginBottom: 8,
     },
 
     // ── The block-coloured roster card ──

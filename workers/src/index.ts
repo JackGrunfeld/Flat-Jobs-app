@@ -16,6 +16,7 @@ import settlementsRoutes from "./routes/settlements";
 import pushTokensRoutes from "./routes/pushTokens";
 import eventsRoutes from "./routes/events";
 import legalRoutes from "./routes/legal";
+import placesRoutes from "./routes/places";
 import { runChoreDigests } from "./lib/choreDigest";
 
 const app = new Hono<AppEnv>();
@@ -48,6 +49,7 @@ app.route("/auth", authRoutes);
 app.route("/apple/notifications", appleNotificationsRoutes);
 app.route("/invites", invitesRoutes);
 app.route("/users/me/push-tokens", pushTokensRoutes);
+app.route("/places", placesRoutes);
 
 app.route("/flats", flatsRoutes);
 app.route("/flats/:flatId/chores", choresRoutes);

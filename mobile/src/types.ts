@@ -95,6 +95,14 @@ export type Flat = {
   ownerId: string;
   members: FlatMember[];
   invitedEmails: string[];
+  // Home Hub's free-text fields — all null until someone fills them in.
+  address: string | null;
+  wifiName: string | null;
+  wifiPassword: string | null;
+  landlordName: string | null;
+  landlordPhone: string | null;
+  landlordEmail: string | null;
+  importantInfo: string | null;
 };
 
 export type Frequency = "Daily" | "Weekly" | "Monthly";

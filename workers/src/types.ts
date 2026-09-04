@@ -8,6 +8,9 @@ export type Bindings = {
   NOTIFY_TIMEZONE?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM_EMAIL?: string;
+  // Proxied by routes/places.ts so it never ships in the app bundle. Address
+  // lookup degrades to a 503 (surfaced as a plain text field) until it's set.
+  GOOGLE_PLACES_API_KEY?: string;
 };
 
 export type Variables = {

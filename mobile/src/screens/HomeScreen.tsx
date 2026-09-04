@@ -2,24 +2,24 @@ import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../context/AuthContext";
 import * as choresService from "../services/choresService";
 import * as completionsService from "../services/completionsService";
 import * as shoppingService from "../services/shoppingService";
+import * as shoppingListService from "../services/shoppingListService";
 import * as settlementsService from "../services/settlementsService";
 import { assignChores, getPeriodIndex } from "../utils/rosterHelpers";
 import { useTheme } from "../context/ThemeContext";
-import { CARD_TONES, onColor, withAlpha, CAL_PLATE } from "../theme/colors";
+import { CARD_TONES, onColor, withAlpha, CAL_PLATE, CAL_RED } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
-import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
-import CalendarStrip from "../components/CalendarStrip";
+import { useTabsHeaderSpace } from "../components/TabsHeader";
 import RevealTile from "../components/RevealTile";
+import AddEventModal from "../components/AddEventModal";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
-import { useTypewriterCycle } from "../hooks/useTypewriterCycle";
+import { computeNotifications, type NotifSummary } from "../storage/notificationSeen";
 import {
   addDays,
   addMonths,
@@ -35,7 +35,7 @@ import {
 import { EVENT_CATEGORIES, isBillCategory, recurrenceCaption } from "../theme/eventCategories";
 import * as eventsService from "../services/eventsService";
 import type { MainTabParamList } from "../navigation/MainTabNavigator";
-import type { Chore, Completion, ShoppingItem, Balance, FlatEvent, NewFlatEvent } from "../types";
+import type { Chore, Completion, ShoppingItem, ShoppingListItem, Balance, FlatEvent, NewFlatEvent } from "../types";
 import ProfileAvatar from "../components/ProfileAvatar";
 
 // Months either side of today that the calendar can be swiped to. Doubles as
@@ -71,6 +71,9 @@ type Styles = ReturnType<typeof createStyles>;
 
 const formatMoney = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+// The device's own clock, not a country → timezone lookup: a phone's local
+// time already reflects wherever the person actually is, which is what a
+// live "good afternoon" greeting is answering to.
 function periodForHour(hour: number) {
   if (hour < 5) return "evening";
   if (hour < 12) return "morning";
@@ -157,30 +160,24 @@ function BentoCard({
   );
 }
 
-// Top-of-screen typed greeting (same treatment as AuthScreen's
-// subtitle), a rotating one-line status ticker built from whatever actually
-// needs attention, then a grid of tappable stat tiles — chores assigned to
-// the signed-in user this week, their net balance, and the shopping list —
-// each colour-coded and routing into the tab it summarises.
+// The app wordmark top-left, a rotating one-line status ticker built from
+// whatever actually needs attention, then a grid of tappable stat tiles —
+// chores assigned to the signed-in user this week, their net balance, and
+// the shopping list — each colour-coded and routing into the tab it
+// summarises.
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
-  const insets = useSafeAreaInsets();
   // The tab bar floats over the page, so the last row needs
-  // somewhere to scroll clear to.
+  // somewhere to scroll clear to. TabsHeader floats over the top the same
+  // way, so the page needs matching clearance up there too.
   const tabBarSpace = useTabBarSpace();
+  const headerSpace = useTabsHeaderSpace(0);
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { currentUser, userFlat } = useAuth();
 
   const firstName = currentUser?.displayName?.trim().split(/\s+/)[0] ?? "";
   const greetingLead = `Good ${periodForHour(new Date().getHours())}`;
-  const greetingText = `${greetingLead}${firstName ? `, ${firstName}` : ""}`;
-  const { text: typedGreeting, cursorOn } = useTypewriterCycle([greetingText], {
-    typeSpeed: 35,
-    deleteSpeed: 26,
-    pauseMs: 900,
-    cursorBlinkMs: 420,
-  });
 
   // Refreshed on focus rather than memoised once, so the strip rolls over if
   // the app sits open past midnight.
@@ -191,7 +188,12 @@ export default function HomeScreen() {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [flatEvents, setFlatEvents] = useState<FlatEvent[]>([]);
-  const [openAddSignal, setOpenAddSignal] = useState(0);
+  // The flat's whole checklist (every list, not just whichever's active on
+  // the Shopping tab) — only fetched here to feed the notification count,
+  // never rendered directly.
+  const [listItems, setListItems] = useState<ShoppingListItem[]>([]);
+  const [notifSummary, setNotifSummary] = useState<NotifSummary>({ count: 0, latest: null });
+  const [addEventVisible, setAddEventVisible] = useState(false);
 
   // The window the calendar can be swiped across — the same bounds the
   // birthday events are derived over, so both sources cover the same months.
@@ -209,31 +211,14 @@ export default function HomeScreen() {
     setFlatEvents(events);
   }, [userFlat, calendarWindow]);
 
-  const updateEvent = useCallback(
-    async (eventId: string, input: any) => {
-      if (!userFlat) return;
-      await eventsService.updateEvent(userFlat.id, eventId, input);
-      await loadEvents();
-    },
-    [userFlat, loadEvents],
-  );
-
-  const deleteEvent = useCallback(
-    async (eventId: string) => {
-      if (!userFlat) return;
-      await eventsService.deleteEvent(userFlat.id, eventId);
-      await loadEvents();
-    },
-    [userFlat, loadEvents],
-  );
-
   const load = useCallback(async () => {
     if (!userFlat) return;
-    const [choresRes, completionsRes, itemsRes, balancesRes] = await Promise.all([
+    const [choresRes, completionsRes, itemsRes, balancesRes, listItemsRes] = await Promise.all([
       choresService.fetchChores(userFlat.id),
       completionsService.fetchCompletions(userFlat.id),
       shoppingService.fetchShoppingItems(userFlat.id),
       settlementsService.fetchBalances(userFlat.id),
+      shoppingListService.fetchShoppingListItems(userFlat.id),
       // Kept out of the destructure: an older deployed API without /events
       // shouldn't blank the whole dashboard, so this one is allowed to fail.
       loadEvents().catch(() => {}),
@@ -242,18 +227,8 @@ export default function HomeScreen() {
     setCompletions(completionsRes.completions);
     setItems(itemsRes.items);
     setBalances(balancesRes.balances);
+    setListItems(listItemsRes.items);
   }, [userFlat, loadEvents]);
-
-  useRegisterAddAction("Home", () => setOpenAddSignal((s) => s + 1));
-
-  const createEvent = useCallback(
-    async (input: NewFlatEvent) => {
-      if (!userFlat) return;
-      await eventsService.createEvent(userFlat.id, input);
-      await loadEvents();
-    },
-    [userFlat, loadEvents],
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -267,6 +242,26 @@ export default function HomeScreen() {
       load();
     }, [load]),
   );
+
+  useRegisterAddAction("Home", () => setAddEventVisible(true));
+
+  const addEvent = async (event: NewFlatEvent) => {
+    if (!userFlat) return;
+    await eventsService.createEvent(userFlat.id, event);
+    await loadEvents();
+  };
+
+  const updateEvent = async (eventId: string, event: NewFlatEvent) => {
+    if (!userFlat) return;
+    await eventsService.updateEvent(userFlat.id, eventId, event);
+    await loadEvents();
+  };
+
+  const deleteEvent = async (eventId: string) => {
+    if (!userFlat) return;
+    await eventsService.deleteEvent(userFlat.id, eventId);
+    await loadEvents();
+  };
 
   const myChoreStats = useMemo(() => {
     if (!userFlat || !currentUser) return { total: 0, done: 0 };
@@ -384,7 +379,51 @@ export default function HomeScreen() {
     };
   }, [calendarEvents, today]);
 
+  // The two soonest things on the calendar box, birthdays included — same
+  // "next up" reasoning as the bills card (`isStart` only, so a multi-day
+  // event counts once, on the day it begins). Only the first two are ever
+  // shown — the one coming up, and a line naming whatever's after it.
+  const upcomingEvents = useMemo(() => {
+    const todayISO = toISODate(today);
+    return calendarEvents
+      .filter((event) => event.isStart && event.date >= todayISO)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))
+      .slice(0, 2);
+  }, [calendarEvents, today]);
+
+  // "Notifications" here aren't a stored inbox — they're the things that
+  // have actually changed since this flatmate last opened the tab that owns
+  // them: a chore added/edited/ticked, a flatmate's new item on the shared
+  // list, or a new bill. See storage/notificationSeen for what "seen" means
+  // per category. Recomputed whenever any of those sources changes, so
+  // marking something seen elsewhere (e.g. opening the House tab) is
+  // reflected the next time this screen focuses and reloads its data.
+  useFocusEffect(
+    useCallback(() => {
+      if (!userFlat || !currentUser) return;
+      let cancelled = false;
+      computeNotifications(userFlat.id, currentUser.id, {
+        chores,
+        completions,
+        shoppingItems: listItems,
+        billItems: items,
+      }).then((summary) => {
+        if (!cancelled) setNotifSummary(summary);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [userFlat, currentUser, chores, completions, listItems, items]),
+  );
+
   if (!userFlat || !currentUser) return null;
+
+  const notifCount = notifSummary.count;
+  const hubTarget = notifSummary.latest?.target ?? "House";
+  const hubLabel = notifSummary.latest?.label ?? "Flat Hub";
+
+  const dateDay = today.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const dateWeekday = today.toLocaleDateString(undefined, { weekday: "long" });
 
   const choreStat = myChoreStats.total === 0 ? "—" : `${myChoreStats.done}/${myChoreStats.total}`;
   const choreCaption =
@@ -424,43 +463,116 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}>
-        <View style={{ flex: 1, paddingBottom: tabBarSpace + 12 }}>
-          <Text
-            style={styles.greeting}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.85}
-          >
-            {typedGreeting.startsWith(greetingLead) ? (
-              <>
-                <Text style={styles.greetingLead}>{greetingLead}</Text>
-                {firstName ? (
-                  <Text style={styles.greetingName}>{typedGreeting.slice(greetingLead.length)}</Text>
-                ) : null}
-                {!firstName && <Text style={styles.greetingLead}>{typedGreeting.slice(greetingLead.length)}</Text>}
-              </>
-            ) : (
-              typedGreeting
-            )}
-            <Text style={[styles.cursor, { opacity: cursorOn ? 1 : 0 }]}>▌</Text>
-          </Text>
+      <View style={[styles.container, { paddingTop: headerSpace }]}>
+        <View style={{ flex: 1, paddingBottom: tabBarSpace + 4 }}>
+          <RevealTile delay={0}>
+            <View style={styles.greetSection}>
+              {/* The date sits on the plain page, clear of the disc below. */}
+              <View style={styles.greetDateRow}>
+                <View style={styles.greetDateBlock}>
+                  <Text style={styles.greetDateDay}>{dateDay}</Text>
+                  <Text style={styles.greetDateWeekday}>{dateWeekday}</Text>
+                </View>
+              </View>
 
-          <View style={styles.calendarWrap}>
-            <RevealTile delay={0}>
-              <CalendarStrip
-                events={calendarEvents}
-                today={today}
-                monthRange={CALENDAR_MONTH_RANGE}
-                onCreateEvent={createEvent}
-                onUpdateEvent={updateEvent}
-                onDeleteEvent={deleteEvent}
-                rows={flatEvents}
-                onRefresh={loadEvents}
-                openAddSignal={openAddSignal}
-              />
-            </RevealTile>
+              <View style={styles.greetBlobWrap}>
+                <View style={styles.greetBlob} />
+                <View style={styles.greetTextBlock}>
+                  <Text style={styles.greetTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+                    {greetingLead}, {firstName}
+                  </Text>
+                  <Text style={styles.greetSubtitle} numberOfLines={1}>
+                    Welcome to {userFlat.name}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.greetFooter}>
+                <View style={styles.greetNotifRow}>
+                  {notifCount > 0 && <View style={styles.greetDot} />}
+                  <Text style={styles.greetNotifText} numberOfLines={1}>
+                    {notifCount > 0
+                      ? `${notifCount} new notification${notifCount === 1 ? "" : "s"}`
+                      : "All caught up"}
+                  </Text>
+                </View>
+                {notifCount > 0 && (
+                  <Pressable
+                    style={styles.greetHubRow}
+                    onPress={() => navigation.navigate(hubTarget)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+                    <Text style={styles.greetHubText}>{hubLabel}</Text>
+                  </Pressable>
+                )}
+              </View>
+            </View>
+          </RevealTile>
+
+          {/* The calendar box — fills whatever's left between the greeting
+              and the mosaic. `flex: 1` on a fixed-height parent is what
+              makes it soak up the slack, so the tiles below always land
+              right above the tab bar's "+" rather than floating mid-screen. */}
+          <View style={styles.calendarBox}>
+            <View style={styles.calendarBoxHeader}>
+              <Text style={styles.calendarBoxHeading}>Coming Up</Text>
+              <View style={styles.calendarBoxHeadingRule} />
+            </View>
+
+            {upcomingEvents.length === 0 ? (
+              <View style={styles.calendarBoxMain}>
+                <Text style={styles.calendarBoxEmpty}>No events coming up</Text>
+              </View>
+            ) : (
+              <>
+                {/* The one coming up — the box's whole reason for being, so it
+                    gets the room: large, centred in whatever space the header
+                    and the "next" line leave it. Name and date share the one
+                    row, name on the left and the date over on the right. */}
+                <View style={styles.calendarBoxMain}>
+                  <View style={styles.calendarBoxMainRow}>
+                    <Text
+                      style={styles.calendarBoxMainTitle}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.6}
+                    >
+                      {upcomingEvents[0].title}
+                    </Text>
+                    <Text style={styles.calendarBoxMainDate} numberOfLines={1}>
+                      {(fromISODate(upcomingEvents[0].date) ?? today).toLocaleDateString(undefined, {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Whatever's after that — a short rule and a quiet line,
+                    rather than a second headline competing with the first. */}
+                {upcomingEvents[1] && (
+                  <View style={styles.calendarBoxNextBlock}>
+                    <View style={styles.calendarBoxNextRule} />
+                    <View style={styles.calendarBoxNextRow}>
+                      <Text style={styles.calendarBoxNextLabel}>Next</Text>
+                      <Text style={styles.calendarBoxNextText} numberOfLines={1}>
+                        {upcomingEvents[1].title} ·{" "}
+                        {(fromISODate(upcomingEvents[1].date) ?? today).toLocaleDateString(undefined, {
+                          day: "numeric",
+                          month: "short",
+                        })}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </>
+            )}
           </View>
+
+          <Text style={styles.flatHeader} numberOfLines={1}>
+            {userFlat.name}
+          </Text>
 
           {/* Tab-bar clearance is the content container's paddingBottom now,
               so the tiles only carry their own spacing. */}
@@ -638,7 +750,15 @@ export default function HomeScreen() {
           </View>
         </View>
       </View>
-      <SettingsButton />
+
+      <AddEventModal
+        visible={addEventVisible}
+        onClose={() => setAddEventVisible(false)}
+        onSubmit={addEvent}
+        events={flatEvents}
+        onUpdate={updateEvent}
+        onDelete={deleteEvent}
+      />
     </View>
   );
 }
@@ -646,35 +766,170 @@ export default function HomeScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 20 },
-  greeting: {
-    fontFamily: fonts.regular,
-    color: colors.text,
-    fontSize: 26,
-    letterSpacing: -0.7,
-    lineHeight: 31,
-    paddingRight: 36,
+  container: { flex: 1, backgroundColor: colors.bg, paddingHorizontal: 10 },
+  // Sits directly on the page — no card fill of its own. A small lime disc
+  // sits just inside the left edge, centred on the greeting line; the date
+  // and the footer row live on the plain background above and below it, each
+  // with its own margin so nothing bleeds into the wordmark above or the
+  // tiles below.
+  // 8pt between every major block down the screen — this gap, the footer's
+  // own marginBottom, the filler panel's, and the flat header's are all the
+  // same value, so the wordmark, the greeting, the purple panel, and the flat
+  // label read as one evenly-paced stack rather than ad-hoc gaps.
+  greetSection: { marginTop: 8, marginBottom: 0 },
+  greetDateRow: { flexDirection: "row", justifyContent: "flex-end", paddingTop: 4 },
+  greetDateBlock: { alignItems: "flex-end" },
+  // Both lines the same size — it's "day + weekday" as one two-line date, not
+  // a headline over a caption — with just enough of a colour split to keep
+  // the day the one that reads first.
+  greetDateDay: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 18, color: colors.text },
+  greetDateWeekday: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 18, color: colors.textMuted },
+  // Fixed to the disc's own diameter, so the wrap's footprint is exactly the
+  // disc — nothing above (the date row) or below (the footer) collides with
+  // it, and the greeting text is centred in the same box the disc is.
+  // Trimmed to the disc's own extent (10pt top offset + 130pt diameter) so
+  // the wrap doesn't carry dead space below the circle before the footer.
+  greetBlobWrap: { height: 140, marginTop: -50, marginBottom: 0 },
+  greetBlob: {
+    position: "absolute",
+    top: 10,
+    // Bleeds past the container's own 20pt inset on purpose — cropped by the
+    // screen edge the way it is in the reference, not floating inside it.
+    left: 0,
+    width: 130,
+    height: 130,
+    borderRadius: 75,
+    backgroundColor: CARD_TONES.lime,
   },
-  greetingLead: { fontFamily: fonts.regular, color: colors.textMuted },
-  greetingName: { fontFamily: fonts.bold, color: colors.text },
-  cursor: { fontFamily: fonts.bold, color: colors.accent, fontSize: 24, lineHeight: 30 },
-  nudge: {
+  // Same `top` as the disc above, rather than letting the wrap centre it —
+  // that's what keeps the greeting's own top edge level with the disc's.
+  // Clears the disc and shifts the whole block a touch right of the page
+  // edge, while staying well inside the disc's own span.
+  greetTextBlock: { paddingLeft: 30, paddingTop: 45 },
+  greetTitle: { fontFamily: fonts.bold, fontSize: 20, letterSpacing: -0.4, color: colors.text },
+  // A dark olive rather than the theme's muted grey — the subtitle wants to
+  // read as printed on the lime disc, not as secondary page text.
+  greetSubtitle: { fontFamily: fonts.regular, fontSize: 20, color: colors.text, marginTop: 2 },
+  // One connected group on the right now — dot, notification count, and the
+  // Flat Hub link all read as a single line rather than two ends of a row.
+  greetFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginTop: 0,
+    marginBottom: 8,
+  },
+  greetNotifRow: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1, marginRight: 10 },
+  greetDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: CAL_RED },
+  greetNotifText: { fontFamily: fonts.regular, fontSize: 13, color: colors.textMuted },
+  greetHubRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  greetHubText: { fontFamily: fonts.bold, fontSize: 13, color: colors.textMuted },
+  // The calendar box — a pinky-purple panel between the greeting and the
+  // mosaic. `flex: 1` inside the screen's own flex column is what lets it
+  // grow or shrink with whatever room is left, rather than a fixed guess at
+  // the gap's size.
+  calendarBox: {
+    flex: 1,
+    marginTop: 0,
+    marginBottom: 8,
+    borderRadius: 24,
+    backgroundColor: CARD_TONES.lilac,
+    padding: 16,
+  },
+  // "Coming Up" sits top-left, with a short rule underneath it rather than
+  // spanning the whole box — it reads as a label for the box, not a divider
+  // across it.
+  calendarBoxHeader: { alignItems: "flex-start" },
+  calendarBoxHeading: {
     fontFamily: fonts.bold,
     fontSize: 13,
+    letterSpacing: 0.3,
+    color: colors.text,
+  },
+  calendarBoxHeadingRule: {
+    marginTop: 5,
+    width: 60,
+    height: 1,
+    backgroundColor: withAlpha(colors.text, 0.25),
+  },
+  // The one event coming up — the box's main event, so it fills whatever
+  // room the header and the "next" line leave it rather than sharing space
+  // with a list. Centred vertically, so the pair sits in the middle of the
+  // box rather than pinned to the header.
+  calendarBoxMain: { flex: 1, justifyContent: "center" },
+  // Name and date share the one row — name takes whatever room the date
+  // doesn't need, date sits flush against the box's right edge.
+  calendarBoxMainRow: { flexDirection: "row", alignItems: "baseline", gap: 25 },
+  calendarBoxMainTitle: {
+    marginTop: 15,
+    flex: 1,
+    fontFamily: fonts.display,
+    fontSize: 30,
+    lineHeight: 34,
+    letterSpacing: -0.6,
+    color: colors.text,
+  },
+  calendarBoxMainDate: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: withAlpha(colors.text, 0.65),
+  },
+  calendarBoxEmpty: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    color: withAlpha(colors.text, 0.6),
+  },
+  // Whatever's after the main event — a short rule and a quiet line, not a
+  // second headline. Pushed down clear of the main row rather than sitting
+  // snug under it, so it reads as a footer to the box rather than a second
+  // line of it.
+  calendarBoxNextBlock: { marginTop: 10},
+  // A short rule rather than a full-width one — the same treatment as the
+  // "Coming Up" heading's own rule, so the two read as a matched pair.
+  calendarBoxNextRule: {
+    width: 30,
+    height: 1,
+    backgroundColor: withAlpha(colors.text, 0.25),
+    marginBottom: 4,
+  },
+  calendarBoxNextRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 25,
+  },
+  calendarBoxNextLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: withAlpha(colors.text, 0.55),
+  },
+  calendarBoxNextText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: withAlpha(colors.text, 0.8),
+  },
+  // Small section label introducing the mosaic below — the flat's own name,
+  // so the tiles read as "this flat's chores/balance/list" rather than
+  // floating unlabelled under the purple panel.
+  flatHeader: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+    color: colors.textMuted,
+    marginBottom: 8,
+  },
+  nudge: {
+    fontFamily: fonts.bold,
+    fontSize: 20,
     letterSpacing: 0.5,
     color: colors.accent,
     marginTop: 10,
   },
-  // Carries the gap the removed "The Lowdown" heading used to provide, so the
-  // tiles still read as their own section below the calendar. Kept tight: the
-  // calendar is tall enough now that generous margins either side of it were
-  // pushing the mosaic off the bottom of the screen. The tiles still read as
-  // their own section — the calendar's dark plate is what separates them, not
-  // the whitespace.
-  calendarWrap: { marginTop: 10, marginBottom: 12 },
   // Tab-bar clearance is the ScrollView's job (useTabBarSpace); this is just
   // breathing room under the last tile.
-  bento: { marginBottom: 12, gap: BENTO_GAP },
+  bento: { marginBottom: 4, gap: BENTO_GAP },
   bentoRow: { flexDirection: "row", gap: BENTO_GAP },
   // The tall tile is a shade wider than the pair beside it, which is what
   // stops the mosaic reading as two equal columns.

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform } from "react-native";
+import React, { useMemo, useState, useRef } from "react";
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, Image } from "react-native";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse } from "@react-native-google-signin/google-signin";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,82 +10,27 @@ import { useTheme } from "../context/ThemeContext";
 import { ApiError } from "../services/apiClient";
 import { GOOGLE_SIGNIN_CONFIGURED } from "../config/env";
 import type { ThemeColors } from "../theme/colors";
+import { LOGIN_ACCENT, onColor } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
+import brandMark from "../../assets/branding/homiesIcon.png";
+import twoHouseMark from "../../assets/branding/2houseIcon.png";
+import homiesTitle from "../../assets/branding/HomesTitle.png";
 
-const CYCLE_WORDS = ["Co-Living", "Flatting", "Home", "Share-House", "Apartment"];
-type SegmentStyle = "normal" | "bold" | "cycle";
-
-function buildSubtitleSegments(cycleWord: string): { text: string; style: SegmentStyle }[] {
-  return [
-    { text: "A ", style: "normal" },
-    { text: "One-Stop", style: "bold" },
-    { text: " Shop for All ", style: "normal" },
-    { text: cycleWord, style: "cycle" },
-    { text: "Needs", style: "normal" },
-  ];
-}
-
-// Fixed segments used while typing out the initial sentence — the cycling
-// word only starts backspacing/retyping once this first pass finishes.
-const TYPING_SEGMENTS = buildSubtitleSegments(CYCLE_WORDS[0]);
-const SUBTITLE_LENGTH = TYPING_SEGMENTS.reduce((sum, seg) => sum + seg.text.length, 0);
-// Char index where each emphasized word starts, typing pauses there.
-const SUBTITLE_PAUSE_INDEXES = (() => {
-  const indexes = new Set<number>();
-  let consumed = 0;
-  for (const seg of TYPING_SEGMENTS) {
-    if (seg.style !== "normal") indexes.add(consumed);
-    consumed += seg.text.length;
-  }
-  return indexes;
-})();
-
-// The stylesheet is built per-scheme now, so these two take it as an argument
-// rather than closing over a module-level one.
+// The stylesheet is built per-scheme now, so downstream helpers take it as
+// an argument rather than closing over a module-level one.
 type Styles = ReturnType<typeof createStyles>;
 
-function styleForSegment(styles: Styles, style: SegmentStyle) {
-  if (style === "bold") return styles.subtitleBold;
-  if (style === "cycle") return styles.subtitleCycle;
-  return undefined;
+// The house mark, top-left, in place of the old typed title/subtitle.
+function BrandMark({ styles }: { styles: Styles }) {
+  return <Image source={brandMark} style={styles.logoMark} resizeMode="contain" />;
 }
 
-function typedSubtitleNodes(
-  styles: Styles,
-  visibleChars: number,
-  cycleIndex: number,
-  cycleWordChars: number,
-  cursor: React.ReactNode,
-) {
-  const typingDone = visibleChars >= SUBTITLE_LENGTH;
-  const currentCycleWord = CYCLE_WORDS[cycleIndex].slice(0, cycleWordChars);
-  const segments = typingDone ? buildSubtitleSegments(currentCycleWord) : TYPING_SEGMENTS;
-  const nodes: React.ReactNode[] = [];
-  let consumed = 0;
-  segments.forEach((seg, idx) => {
-    const shown = typingDone ? seg.text : seg.text.slice(0, Math.max(0, Math.min(visibleChars - consumed, seg.text.length)));
-    consumed += seg.text.length;
-    if (shown) {
-      const style = styleForSegment(styles, seg.style);
-      nodes.push(
-        style ? (
-          <Text key={idx} style={style}>
-            {shown}
-          </Text>
-        ) : (
-          shown
-        ),
-      );
-    }
-    // Once the sentence is fully typed, the cursor tracks the cycling word
-    // (where the backspace/retype animation runs) instead of the sentence end.
-    if (typingDone && seg.style === "cycle") {
-      nodes.push(<React.Fragment key="cursor">{cursor}</React.Fragment>);
-    }
-  });
-  if (!typingDone) nodes.push(<React.Fragment key="cursor">{cursor}</React.Fragment>);
-  return nodes;
+// The "Homies. Keeping the peace." title, sat in the gap below the mark and
+// above the form rather than beside the mark — its own block so it doesn't
+// affect the mark's row or push the form down as it grows.
+function TitleMark({ styles }: { styles: Styles }) {
+  return <Image source={homiesTitle} style={styles.titleMark} resizeMode="contain" />;
 }
 
 // Port of AuthPage.jsx: a single login/signup toggle form, now with
@@ -98,7 +43,7 @@ export default function AuthScreen() {
   // no member colour to accent it with until after this screen.
   const inputTheme = useMemo(
     () => ({
-      accentColor: colors.accentInk,
+      accentColor: LOGIN_ACCENT,
       idleBorderColor: colors.inputBorder,
       idleLabelColor: colors.textMuted,
       idleTextColor: colors.textMuted,
@@ -124,61 +69,12 @@ export default function AuthScreen() {
   // new account). Holds the callback that re-runs that same sign-in with
   // acceptance, so the user doesn't have to tap Google/Apple a second time.
   const [pendingOAuthRetry, setPendingOAuthRetry] = useState<(() => Promise<void>) | null>(null);
-  const [visibleChars, setVisibleChars] = useState(0);
-  const [cursorOn, setCursorOn] = useState(true);
-  const [cycleIndex, setCycleIndex] = useState(0);
-  const [cycleWordChars, setCycleWordChars] = useState(CYCLE_WORDS[0].length);
-  const [cyclePhase, setCyclePhase] = useState<"pause" | "deleting" | "typing">("pause");
-  const typingDone = visibleChars >= SUBTITLE_LENGTH;
 
   // Store the real email from Apple's first authorization to avoid "Hide My Email"
   // relay on subsequent sign-ins. Apple may provide a privacy relay address on later
   // sign-ins for the same user, which would break the flat inviting system that uses
   // email invites. We preserve the original real email so the inviting system works.
   const appleRealEmailRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (typingDone) return;
-    const delay = SUBTITLE_PAUSE_INDEXES.has(visibleChars) ? 400 : 45;
-    const timer = setTimeout(() => setVisibleChars((c) => c + 1), delay);
-    return () => clearTimeout(timer);
-  }, [visibleChars, typingDone]);
-
-  // Backspace-then-retype animation for the cycling word, once the initial
-  // sentence has finished typing.
-  useEffect(() => {
-    if (!typingDone) return;
-
-    if (cyclePhase === "pause") {
-      const timer = setTimeout(() => setCyclePhase("deleting"), 1400);
-      return () => clearTimeout(timer);
-    }
-
-    if (cyclePhase === "deleting") {
-      if (cycleWordChars > 0) {
-        const timer = setTimeout(() => setCycleWordChars((c) => c - 1), 35);
-        return () => clearTimeout(timer);
-      }
-      setCycleIndex((i) => (i + 1) % CYCLE_WORDS.length);
-      setCyclePhase("typing");
-      return;
-    }
-
-    if (cyclePhase === "typing") {
-      const nextWord = CYCLE_WORDS[cycleIndex];
-      if (cycleWordChars < nextWord.length) {
-        const timer = setTimeout(() => setCycleWordChars((c) => c + 1), 60);
-        return () => clearTimeout(timer);
-      }
-      setCyclePhase("pause");
-      return;
-    }
-  }, [typingDone, cyclePhase, cycleWordChars, cycleIndex]);
-
-  useEffect(() => {
-    const blink = setInterval(() => setCursorOn((v) => !v), 500);
-    return () => clearInterval(blink);
-  }, []);
 
   const clearInvalid = (field: "email" | "password" | "terms") =>
     setInvalidFields((f) => (f[field] ? { ...f, [field]: false } : f));
@@ -315,18 +211,8 @@ export default function AuthScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.titleRow}>
-        <Text style={styles.titleBrand}>hommies</Text>
-      </View>
-      <Text style={styles.subtitle}>
-        {typedSubtitleNodes(
-          styles,
-          visibleChars,
-          cycleIndex,
-          cycleWordChars,
-          <Text style={[styles.subtitleCursor, { opacity: cursorOn ? 1 : 0 }]}>▌</Text>,
-        )}
-      </Text>
+      <BrandMark styles={styles} />
+      <TitleMark styles={styles} />
 
       <View style={styles.formSection}>
         <AnimatedInput
@@ -376,7 +262,7 @@ export default function AuthScreen() {
               accessibilityState={{ checked: acceptedTerms }}
               accessibilityLabel="Accept the Terms and Conditions"
             >
-              {acceptedTerms && <Ionicons name="checkmark" size={14} color={colors.accentText} />}
+              {acceptedTerms && <Ionicons name="checkmark" size={14} color={onColor(LOGIN_ACCENT)} />}
             </Pressable>
             <Text style={styles.termsText}>
               I agree to the{" "}
@@ -391,7 +277,7 @@ export default function AuthScreen() {
 
         <Pressable style={styles.primaryButton} onPress={handleSubmit} disabled={submitting}>
           {submitting ? (
-            <ActivityIndicator color={colors.accentText} />
+            <ActivityIndicator color={onColor(LOGIN_ACCENT)} />
           ) : (
             <Text style={styles.primaryButtonText}>{mode === "signup" ? "Sign up" : "Log in"}</Text>
           )}
@@ -418,6 +304,8 @@ export default function AuthScreen() {
         </View>
       </View>
 
+      <Image source={twoHouseMark} style={styles.cornerMark} resizeMode="contain" />
+
       <TermsModal visible={termsVisible} onAccept={handleAcceptTerms} onClose={handleCloseTerms} />
     </View>
   );
@@ -425,46 +313,41 @@ export default function AuthScreen() {
 
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
-  container: { flex: 1, padding: 16, paddingTop: 72, backgroundColor: colors.bg },
-  titleRow: { alignItems: "center", paddingLeft: 4 },
+  // Fixed white rather than colors.bg — the login screen carries the brand
+  // marks' own light backdrop regardless of scheme, the same way the marks
+  // themselves keep their own fixed colours.
+  container: { flex: 1, padding: 16, paddingTop: 72, backgroundColor: "#ffffff" },
   formSection: { flex: 1, justifyContent: "center", gap: 10, marginTop: 4, width: "100%", alignSelf: "center" },
   emailPasswordGap: { height: 28 },
-  // The app's page titles all use textMuted with the display face set at a
-  // quieter size; the brand lockup keeps that same muted colour so it reads
-  // as part of the app rather than a splash screen.
-  titleBrand: {
-    fontFamily: fonts.display,
-    fontSize: typeScale.display,
-    letterSpacing: 3,
-    color: colors.textMuted,
+  // The house mark, top-left in place of the old typed title/subtitle.
+  logoMark: { width: 60, height: 60, alignSelf: "flex-start" },
+  // Sits in the gap below the mark and above the form — `formSection`'s own
+  // `flex: 1` + `justifyContent: center` is what keeps the login fields
+  // centred in whatever room is left under this, so this can move without
+  // pushing the form itself down.
+  titleMark: {
+    alignSelf: "center",
+    marginTop: 28,
+    height: 96,
+    width: Math.round(96 * (348 / 146)),
   },
-  subtitle: {
-    fontFamily: fonts.subtitle,
-    fontSize: typeScale.subheading,
-    lineHeight: 30,
-    height: 60,
-    letterSpacing: 1,
-    color: colors.textMuted,
-    marginTop: 24,
-    paddingLeft: 4,
-  },
-  subtitleBold: { fontFamily: fonts.subtitleBold },
-  subtitleCycle: { fontFamily: fonts.subtitleBold, color: colors.text },
-  subtitleCursor: { fontFamily: fonts.subtitleBold, color: colors.accentInk },
+  // The two-house illustration, bottom-right — a second, looser brand touch
+  // clear of the form above it.
+  cornerMark: { position: "absolute", right: 16, bottom: 16, width: 140, height: 58 },
   error: { fontFamily: fonts.regular, color: colors.danger, textAlign: "center" },
-  primaryButton: { backgroundColor: colors.accent, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 18},
-  primaryButtonText: { fontFamily: fonts.bold, color: colors.accentText, fontSize: typeScale.body },
+  primaryButton: { backgroundColor: LOGIN_ACCENT, borderRadius: 8, padding: 14, alignItems: "center", marginTop: 18},
+  primaryButtonText: { fontFamily: fonts.bold, color: onColor(LOGIN_ACCENT), fontSize: typeScale.body },
 
   secondaryButton: {
     borderWidth: 1,
-    borderColor: colors.accentInk,
+    borderColor: LOGIN_ACCENT,
     borderRadius: 8,
     padding: 14,
     alignItems: "center",
     marginTop: 4,
   },
 
-  secondaryButtonText: { fontFamily: fonts.bold, color: colors.accentInk, fontSize: typeScale.body },
+  secondaryButtonText: { fontFamily: fonts.bold, color: LOGIN_ACCENT, fontSize: typeScale.body },
 
   termsRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 14 },
   checkbox: {
@@ -476,10 +359,10 @@ function createStyles(colors: ThemeColors) {
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxChecked: { backgroundColor: LOGIN_ACCENT, borderColor: LOGIN_ACCENT },
   checkboxError: { borderColor: colors.danger },
   termsText: { flex: 1, fontFamily: fonts.regular, fontSize: typeScale.body, color: colors.textMuted },
-  termsLink: { fontFamily: fonts.bold, color: colors.accentInk, textDecorationLine: "underline" },
+  termsLink: { fontFamily: fonts.bold, color: LOGIN_ACCENT, textDecorationLine: "underline" },
 
   oauthRow: { flexDirection: "row", justifyContent: "center", gap: 16, paddingTop: 28},
   circleButton: {

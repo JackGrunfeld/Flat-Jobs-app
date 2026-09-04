@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView, Alert } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Animated, View, Text, Pressable, StyleSheet, Alert } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 import { useTabBarSpace } from "../navigation/FlatTabBar";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,12 +9,14 @@ import * as shoppingService from "../services/shoppingService";
 import * as settlementsService from "../services/settlementsService";
 import SettleUpModal from "../components/SettleUpModal";
 import AddExpenseModal, { type NewExpense } from "../components/AddExpenseModal";
-import SettingsButton, { HEADER_TITLE_TOP } from "../components/SettingsButton";
+import { useTabsHeaderSpace } from "../components/TabsHeader";
 import RevealTile from "../components/RevealTile";
 import { useRegisterAddAction } from "../navigation/AddActionContext";
+import { markBillsSeen } from "../storage/notificationSeen";
 import { useTheme } from "../context/ThemeContext";
 import { CARD_TONES, onColor, withAlpha } from "../theme/colors";
 import type { ThemeColors } from "../theme/colors";
+import { hexToRgba } from "../theme/colorMath";
 import { inkFor } from "../theme/cardInk";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
@@ -37,6 +39,11 @@ const CARD_AVATAR = 44;
 // before it.
 const FACE = 28;
 const FACE_OVERLAP = 9;
+
+// How tall the fade under the fixed title is — content scrolling up dims out
+// across this band instead of vanishing the instant it reaches the title's
+// hard edge.
+const HEADER_FADE_HEIGHT = 24;
 
 type Styles = ReturnType<typeof createStyles>;
 
@@ -86,12 +93,17 @@ function Avatar({
 // tapped to drop down the expenses behind it — and the full ledger and
 // settlement history collapsed underneath, the way the chore list is.
 export default function BillsScreen() {
-  const insets = useSafeAreaInsets();
   // The tab bar floats over the page, so the last row needs
-  // somewhere to scroll clear to.
+  // somewhere to scroll clear to. TabsHeader floats over the top the same
+  // way, so the first row needs matching clearance up there too.
   const tabBarSpace = useTabBarSpace();
+  const headerSpace = useTabsHeaderSpace();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  // Drives the header fade below — invisible at rest, so it only dims
+  // content once something's actually scrolled up under the fixed title,
+  // tied to the live scroll offset rather than always-on.
+  const scrollY = useRef(new Animated.Value(0)).current;
   const { currentUser, userFlat } = useAuth();
 
   const [expenses, setExpenses] = useState<ShoppingItem[]>([]);
@@ -109,7 +121,7 @@ export default function BillsScreen() {
   const [showHistory, setShowHistory] = useState(false);
 
   const load = useCallback(async () => {
-    if (!userFlat) return;
+    if (!userFlat || !currentUser) return;
     const [expensesRes, balancesRes, settlementsRes] = await Promise.all([
       shoppingService.fetchShoppingItems(userFlat.id),
       settlementsService.fetchBalances(userFlat.id),
@@ -118,7 +130,10 @@ export default function BillsScreen() {
     setExpenses(expensesRes.items);
     setBalances(balancesRes.balances);
     setSettlements(settlementsRes.settlements);
-  }, [userFlat]);
+    // Opening this tab is what "reads" a new bill — the Home screen's
+    // notification count stops counting it from here on.
+    markBillsSeen(userFlat.id, currentUser.id, expensesRes.items);
+  }, [userFlat, currentUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -277,12 +292,24 @@ export default function BillsScreen() {
 
   return (
     <View style={styles.root}>
-      <ScrollView
-        style={[styles.container, { paddingTop: insets.top + HEADER_TITLE_TOP }]}
-        contentContainerStyle={{ paddingBottom: tabBarSpace }}
-      >
+      {/* Title is chrome, not content — pinned above the ScrollView rather
+          than scrolling away with the ledger. */}
+      <View style={[styles.fixedHeader, { paddingTop: headerSpace }]}>
         <Text style={styles.pageTitle}>Bills</Text>
+      </View>
 
+      {/* The scroll area itself, with a fade masking its own top edge so
+          content dims out as it scrolls up under the fixed title above
+          instead of being clipped the instant it reaches it. Faded in off
+          the live scroll offset — invisible at rest, so nothing dims before
+          anything's actually scrolled. */}
+      <View style={styles.scrollArea}>
+        <Animated.ScrollView
+          style={styles.container}
+          contentContainerStyle={{ paddingBottom: tabBarSpace }}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+          scrollEventThrottle={16}
+        >
         {/* The one number that matters, on the same indigo the dashboard's
             balance tile wears — so arriving from that tile lands on the same
             colour it was tapped on. */}
@@ -487,24 +514,37 @@ export default function BillsScreen() {
               ))}
           </>
         )}
+        </Animated.ScrollView>
 
-        <AddExpenseModal
-          visible={addVisible}
-          members={userFlat.members}
-          currentUserId={currentUser.id}
-          onClose={() => setAddVisible(false)}
-          onSubmit={addExpense}
-        />
+        {/* Overlaps the ScrollView's own top edge rather than sitting in its
+            content, so it masks whatever's scrolled underneath it without
+            taking up any of the ledger's own space. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.headerFade,
+            { opacity: scrollY.interpolate({ inputRange: [0, HEADER_FADE_HEIGHT], outputRange: [0, 1], extrapolate: "clamp" }) },
+          ]}
+        >
+          <LinearGradient colors={[colors.bg, hexToRgba(colors.bg, 0)]} style={StyleSheet.absoluteFill} />
+        </Animated.View>
+      </View>
 
-        <SettleUpModal
-          visible={!!settleTarget}
-          counterpartName={settleTarget ? nameFor(settleTarget.owesUserId) : ""}
-          suggestedAmountCents={settleTarget?.amountCents ?? 0}
-          onClose={() => setSettleTarget(null)}
-          onSubmit={submitSettlement}
-        />
-      </ScrollView>
-      <SettingsButton />
+      <AddExpenseModal
+        visible={addVisible}
+        members={userFlat.members}
+        currentUserId={currentUser.id}
+        onClose={() => setAddVisible(false)}
+        onSubmit={addExpense}
+      />
+
+      <SettleUpModal
+        visible={!!settleTarget}
+        counterpartName={settleTarget ? nameFor(settleTarget.owesUserId) : ""}
+        suggestedAmountCents={settleTarget?.amountCents ?? 0}
+        onClose={() => setSettleTarget(null)}
+        onSubmit={submitSettlement}
+      />
     </View>
   );
 }
@@ -512,7 +552,24 @@ export default function BillsScreen() {
 function createStyles(colors: ThemeColors) {
   return StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.bg },
-    container: { flex: 1, padding: 16, backgroundColor: colors.bg },
+    // Sits above the ScrollView in normal flow (not floating over it) — the
+    // ledger starts right where this ends, so there's no overlap to allow
+    // for.
+    fixedHeader: { paddingHorizontal: 16, backgroundColor: colors.bg },
+    // Positions the fade below relative to the ScrollView's own top edge
+    // rather than the screen's.
+    scrollArea: { flex: 1 },
+    container: { flex: 1, paddingHorizontal: 16, backgroundColor: colors.bg },
+    // Sits right over the ScrollView's top edge — content dims out across
+    // this band as it scrolls up underneath it, instead of being clipped the
+    // instant it reaches the fixed title above.
+    headerFade: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: HEADER_FADE_HEIGHT,
+    },
     // Same title treatment as the chores tab — the tab name set quietly at the
     // top rather than a centred, tracked-out label.
     pageTitle: {
