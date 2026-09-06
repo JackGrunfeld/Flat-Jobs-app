@@ -50,9 +50,25 @@ export const toggleShoppingListItemUpvote = (flatId: string, itemId: string) =>
   });
 
 export const setShoppingListItemPurchased = (flatId: string, itemId: string, purchased: boolean) =>
-  apiFetch<{ success: true }>(`/flats/${flatId}/shopping-list-items/${itemId}`, {
+  apiFetch<{ item: ShoppingListItem }>(`/flats/${flatId}/shopping-list-items/${itemId}`, {
     method: "PATCH",
     body: JSON.stringify({ purchased }),
+  });
+
+export const renameShoppingListItem = (flatId: string, itemId: string, name: string) =>
+  apiFetch<{ item: ShoppingListItem }>(`/flats/${flatId}/shopping-list-items/${itemId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+
+// Hold-and-drag an item to reorder it within a list, or onto another list
+// entirely — `orderedIds` carries that whole list's items in their new
+// order (the moved item included, wherever it landed), same shape as
+// reordering the category chips themselves.
+export const reorderShoppingListItems = (flatId: string, listId: string, orderedIds: string[]) =>
+  apiFetch<{ success: true }>(`/flats/${flatId}/shopping-list-items/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ listId, orderedIds }),
   });
 
 export const deleteShoppingListItem = (flatId: string, itemId: string) =>

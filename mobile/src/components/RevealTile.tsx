@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from "react";
-import { Animated, type StyleProp, type ViewStyle } from "react-native";
+import { Animated, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 
 // Staggered fade-up on mount/focus — each tile waits `delay` ms before
@@ -12,10 +12,15 @@ import { useFocusEffect } from "@react-navigation/native";
 export default function RevealTile({
   delay,
   style,
+  onLayout,
   children,
 }: {
   delay: number;
   style?: StyleProp<ViewStyle>;
+  /** Passed straight through to the tile's own wrapper — lets a caller
+   *  measure where a tile landed (e.g. the shopping list tracking each
+   *  row's position for its hold-and-drag). */
+  onLayout?: (e: LayoutChangeEvent) => void;
   children: React.ReactNode;
 }) {
   const anim = useRef(new Animated.Value(0)).current;
@@ -29,6 +34,7 @@ export default function RevealTile({
 
   return (
     <Animated.View
+      onLayout={onLayout}
       style={[
         style,
         {

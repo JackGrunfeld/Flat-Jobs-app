@@ -5,15 +5,27 @@ import { useTheme } from "../context/ThemeContext";
 import { onColor, withAlpha, type ThemeColors } from "../theme/colors";
 import { fonts } from "../theme/fonts";
 import { typeScale } from "../theme/typography";
+import { lockTabSwipe, unlockTabSwipe } from "../navigation/tabSwipeLock";
 import type { FlatMember, ShoppingListItem } from "../types";
 import ProfileAvatar from "./ProfileAvatar";
 
-const DELETE_WIDTH = 84;
-const OPEN_X = -DELETE_WIDTH;
+const EDIT_WIDTH = 72;
+const DELETE_WIDTH = 72;
+// Breathing room between the sliding card and the action boxes, and between
+// the two boxes themselves — they read as separate buttons, not one bar.
+const ACTION_GAP = 10;
+const OPEN_X = -(ACTION_GAP + EDIT_WIDTH + ACTION_GAP + DELETE_WIDTH);
 // Past this point on release, the swipe counts as "open" rather than
 // snapping back — roughly iMessage's own halfway-ish commit point.
 const OPEN_COMMIT_X = OPEN_X * 0.4;
 const MAX_VISIBLE_UPVOTERS = 3;
+// How long a hold has to sit still before it arms drag-to-move rather than
+// just being read as the start of a tap.
+const DRAG_LONG_PRESS_MS = 400;
+// Once armed (or before a swipe/drag has been decided at all), how far the
+// finger has to travel before that reads as movement rather than a still
+// finger about to lift off as a tap.
+const SLOP = 4;
 
 // The "added by" face on the left of the card, and the smaller ones in the
 // upvoter stack. Both are ProfileAvatar, so these are the only sizes the card
@@ -32,11 +44,21 @@ type Props = {
   upvoters: FlatMember[];
   upvoted: boolean;
   open: boolean;
+  /** True while this is the card being held-and-dragged to another spot —
+   *  it stays put in the stack (dimmed) while a floating copy follows the
+   *  finger, drawn by the screen rather than this card. */
+  dragging: boolean;
   onToggle: () => void;
   onDelete: () => void;
+  onEdit: () => void;
   onUpvote: () => void;
   onSwipeOpen: () => void;
   onSwipeClose: () => void;
+  /** Hold-and-drag to move this item, in screen (page) coordinates — the
+   *  same space the screen's drop-target hit-testing works in. */
+  onDragStart: (pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
 };
 
 // Small overlapping avatar stack next to the item name showing who's
@@ -86,8 +108,16 @@ function UpvoterStack({
 // One card per list item — avatar of whoever added it on the left, the name
 // in the middle (with a small overlapping stack of upvoters' avatars next to
 // it), an upvote "^" button just left of the tick box, then the tick box.
-// Swipe left, iMessage-style, to reveal a Delete button behind the card;
-// `open`/onSwipeOpen/onSwipeClose let the parent keep only one row open.
+//
+// One PanResponder does triple duty on the row as a whole: a quick tap
+// toggles purchased, a horizontal drag reveals Edit/Delete (iMessage-style),
+// and a hold-then-drag lifts the card to move it elsewhere. It claims the
+// touch from the moment it starts (rather than waiting to see which of
+// those it is) and decides between them itself — a genuine vertical drag
+// past a small slop is still handed back to the enclosing ScrollView by RN's
+// own responder system, the same as it always has been, so page scrolling
+// is unaffected. The nested checkbox/upvote buttons are untouched by any of
+// this: a touch starting on them is claimed by them first, as always.
 export default function ShoppingItemCard({
   item,
   tone,
@@ -95,11 +125,16 @@ export default function ShoppingItemCard({
   upvoters,
   upvoted,
   open,
+  dragging,
   onToggle,
   onDelete,
+  onEdit,
   onUpvote,
   onSwipeOpen,
   onSwipeClose,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: Props) {
   const { colors } = useTheme();
   // Black or white, whichever reads on this card's fill — the same call the
@@ -115,6 +150,18 @@ export default function ShoppingItemCard({
   const translateX = useRef(new Animated.Value(0)).current;
   const currentX = useRef(0);
   const dragStartX = useRef(0);
+  // The little "lifted off the stack" scale-up while held, whether or not
+  // that hold turns into an actual move.
+  const liftScale = useRef(new Animated.Value(1)).current;
+
+  // Everything this gesture needs to remember between callbacks — refs, not
+  // state, since PanResponder's own callbacks are created once and read
+  // these live rather than closing over a render's props.
+  const mode = useRef<"idle" | "swipe" | "drag">("idle");
+  const liftedRef = useRef(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     const id = translateX.addListener(({ value }) => {
@@ -129,78 +176,163 @@ export default function ShoppingItemCard({
     }
   }, [open, translateX]);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponderCapture: () => false,
-      onMoveShouldSetPanResponderCapture: (_evt, gesture) =>
-        Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
-      onPanResponderGrant: () => {
-        dragStartX.current = currentX.current;
-      },
-      onPanResponderMove: (_evt, gesture) => {
-        const next = Math.min(0, Math.max(OPEN_X, dragStartX.current + gesture.dx));
-        translateX.setValue(next);
-      },
-      onPanResponderRelease: (_evt, gesture) => {
-        const next = Math.min(0, Math.max(OPEN_X, dragStartX.current + gesture.dx));
-        const shouldOpen = next < OPEN_COMMIT_X || gesture.vx < -0.5;
-        Animated.spring(translateX, { toValue: shouldOpen ? OPEN_X : 0, useNativeDriver: true, friction: 9, tension: 70 }).start();
-        if (shouldOpen) onSwipeOpen();
-        else onSwipeClose();
-      },
-      onPanResponderTerminationRequest: () => false,
-    }),
-  ).current;
+  const clearLongPressTimer = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
 
-  const handlePress = () => {
-    if (open) {
+  const settleLift = () => {
+    Animated.spring(liftScale, { toValue: 1, useNativeDriver: true, friction: 9, tension: 120 }).start();
+  };
+
+  const handleTap = () => {
+    if (openRef.current) {
       onSwipeClose();
       return;
     }
     onToggle();
   };
 
+  const endGesture = (evt: { nativeEvent: { pageX: number; pageY: number } }, gesture: { dx: number; vx: number }) => {
+    clearLongPressTimer();
+    if (mode.current === "drag") {
+      settleLift();
+      onDragEnd(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+    } else if (mode.current === "swipe") {
+      const next = Math.min(0, Math.max(OPEN_X, dragStartX.current + gesture.dx));
+      const shouldOpen = next < OPEN_COMMIT_X || gesture.vx < -0.5;
+      Animated.spring(translateX, { toValue: shouldOpen ? OPEN_X : 0, useNativeDriver: true, friction: 9, tension: 70 }).start();
+      if (shouldOpen) onSwipeOpen();
+      else onSwipeClose();
+    } else if (liftedRef.current) {
+      // Held long enough to arm a drag but never actually moved — settle
+      // back down without treating it as a tap.
+      settleLift();
+    } else {
+      handleTap();
+    }
+    liftedRef.current = false;
+    mode.current = "idle";
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      // Claims every touch on the row from the start, so it can tell tap,
+      // swipe and hold-drag apart itself — a real vertical scroll gesture
+      // is still reclaimed by the ScrollView automatically via its own
+      // capture handler, same as any control nested in a ScrollView.
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => false,
+      onPanResponderGrant: () => {
+        mode.current = "idle";
+        liftedRef.current = false;
+        dragStartX.current = currentX.current;
+        if (!openRef.current) {
+          longPressTimer.current = setTimeout(() => {
+            liftedRef.current = true;
+            Animated.spring(liftScale, { toValue: 1.04, useNativeDriver: true, friction: 6, tension: 180 }).start();
+          }, DRAG_LONG_PRESS_MS);
+        }
+      },
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: (evt, gesture) => {
+        if (mode.current === "drag") {
+          onDragMove(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+          return;
+        }
+        if (mode.current === "swipe") {
+          const next = Math.min(0, Math.max(OPEN_X, dragStartX.current + gesture.dx));
+          translateX.setValue(next);
+          return;
+        }
+        // Still deciding what this gesture is.
+        if (liftedRef.current && (Math.abs(gesture.dx) > SLOP || Math.abs(gesture.dy) > SLOP)) {
+          mode.current = "drag";
+          onDragStart(evt.nativeEvent.pageX, evt.nativeEvent.pageY);
+          return;
+        }
+        if (!liftedRef.current && Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5) {
+          clearLongPressTimer();
+          mode.current = "swipe";
+          const next = Math.min(0, Math.max(OPEN_X, dragStartX.current + gesture.dx));
+          translateX.setValue(next);
+        }
+      },
+      onPanResponderRelease: endGesture,
+      // The ScrollView (or anything else) reclaiming the gesture mid-way —
+      // most commonly a vertical scroll starting before anything here
+      // decided what the touch was. Same cleanup as a normal release.
+      onPanResponderTerminate: endGesture,
+      onPanResponderTerminationRequest: () => mode.current !== "drag",
+    }),
+  ).current;
+
   return (
     <View style={styles.wrap}>
-      <View style={styles.deleteBackground}>
-        <Pressable style={styles.deleteButton} onPress={onDelete} hitSlop={8}>
-          <Ionicons name="trash" size={20} color="#fff" />
-          <Text style={styles.deleteText}>Delete</Text>
+      {/* Hidden while this card is the one being held-and-dragged — its
+          floating copy has nothing to reveal these behind, and they'd
+          otherwise show through the dimmed card sitting in its place. */}
+      {!dragging && (
+        <View style={styles.actionsBackground}>
+          <Pressable style={styles.editButton} onPress={onEdit} hitSlop={8}>
+            <Ionicons name="pencil" size={20} color="#fff" />
+            <Text style={styles.deleteText}>Edit</Text>
+          </Pressable>
+          <Pressable style={styles.deleteButton} onPress={onDelete} hitSlop={8}>
+            <Ionicons name="trash" size={20} color="#fff" />
+            <Text style={styles.deleteText}>Delete</Text>
+          </Pressable>
+        </View>
+      )}
+      <Animated.View
+        style={[
+          styles.card,
+          { transform: [{ translateX }, { scale: liftScale }] },
+          // The dragged item stays in the stack (so the layout doesn't
+          // reflow mid-drag) but reads as "lifted out" while its floating
+          // copy follows the finger instead.
+          dragging && styles.cardDragging,
+        ]}
+        // Held for as long as any touch is down on the row — a plain tap,
+        // a swipe reveal, or a drag are all "this card owns the gesture,
+        // not the tab-swipe wrapper around the whole screen".
+        onTouchStart={lockTabSwipe}
+        onTouchEnd={unlockTabSwipe}
+        onTouchCancel={unlockTabSwipe}
+        {...panResponder.panHandlers}
+      >
+        <ProfileAvatar
+          displayName={addedBy?.displayName ?? "?"}
+          color={avatarColor}
+          photo={addedBy?.photo}
+          size={ADDED_BY_AVATAR_SIZE}
+          fallbackOn={fg}
+        />
+
+        <View style={styles.nameArea}>
+          <Text style={[styles.name, item.purchased && styles.nameDone]} numberOfLines={2}>
+            {item.name}
+          </Text>
+          <UpvoterStack upvoters={upvoters} total={item.upvoteCount} styles={styles} fallbackColor={colors.accent} fg={fg} />
+        </View>
+
+        <Pressable
+          style={[styles.upvoteButton, upvoted && styles.upvoteButtonActive]}
+          onPress={onUpvote}
+          hitSlop={8}
+        >
+          <Ionicons name="chevron-up" size={16} color={upvoted ? tone : fg} />
+          {item.upvoteCount > 0 && (
+            <Text style={[styles.upvoteCount, upvoted && styles.upvoteCountActive]}>{item.upvoteCount}</Text>
+          )}
         </Pressable>
-      </View>
-      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
-        <Pressable style={styles.card} onPress={handlePress}>
-          <ProfileAvatar
-            displayName={addedBy?.displayName ?? "?"}
-            color={avatarColor}
-            photo={addedBy?.photo}
-            size={ADDED_BY_AVATAR_SIZE}
-            fallbackOn={fg}
-          />
 
-          <View style={styles.nameArea}>
-            <Text style={[styles.name, item.purchased && styles.nameDone]} numberOfLines={2}>
-              {item.name}
-            </Text>
-            <UpvoterStack upvoters={upvoters} total={item.upvoteCount} styles={styles} fallbackColor={colors.accent} fg={fg} />
+        <Pressable style={styles.checkboxTouch} onPress={handleTap} hitSlop={10}>
+          <View style={[styles.checkbox, item.purchased && styles.checkboxDone]}>
+            {item.purchased && <Text style={styles.checkmark}>✓</Text>}
           </View>
-
-          <Pressable
-            style={[styles.upvoteButton, upvoted && styles.upvoteButtonActive]}
-            onPress={onUpvote}
-            hitSlop={8}
-          >
-            <Ionicons name="chevron-up" size={16} color={upvoted ? tone : fg} />
-            {item.upvoteCount > 0 && (
-              <Text style={[styles.upvoteCount, upvoted && styles.upvoteCountActive]}>{item.upvoteCount}</Text>
-            )}
-          </Pressable>
-
-          <Pressable style={styles.checkboxTouch} onPress={handlePress} hitSlop={10}>
-            <View style={[styles.checkbox, item.purchased && styles.checkboxDone]}>
-              {item.purchased && <Text style={styles.checkmark}>✓</Text>}
-            </View>
-          </Pressable>
         </Pressable>
       </Animated.View>
     </View>
@@ -210,18 +342,34 @@ export default function ShoppingItemCard({
 function createStyles(colors: ThemeColors, tone: string, fg: string) {
   return StyleSheet.create({
     wrap: { marginBottom: 12 },
-    deleteBackground: {
+    // Not a single bar behind the card — just the row the two boxes sit in.
+    // The gap before the first box (and between the boxes) is what shows the
+    // card sliding clear of them rather than butting straight up against them.
+    actionsBackground: {
       position: "absolute",
       top: 0,
       bottom: 0,
       right: 0,
-      width: DELETE_WIDTH,
+      width: ACTION_GAP + EDIT_WIDTH + ACTION_GAP + DELETE_WIDTH,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: ACTION_GAP,
+      paddingLeft: ACTION_GAP,
+    },
+    editButton: {
+      width: EDIT_WIDTH,
+      alignSelf: "stretch",
+      backgroundColor: colors.accent,
       borderRadius: 16,
-      overflow: "hidden",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 2,
     },
     deleteButton: {
-      flex: 1,
+      width: DELETE_WIDTH,
+      alignSelf: "stretch",
       backgroundColor: colors.danger,
+      borderRadius: 16,
       alignItems: "center",
       justifyContent: "center",
       gap: 2,
@@ -243,6 +391,11 @@ function createStyles(colors: ThemeColors, tone: string, fg: string) {
       shadowOffset: { width: 0, height: 3 },
       elevation: 3,
     },
+    // Held-and-dragging: this copy stays in its slot (so surrounding rows
+    // have something to measure and shift around) but is fully invisible —
+    // its floating copy is doing all the showing now, and the screen closes
+    // the gap this leaves by shifting the rows after it up to meet it.
+    cardDragging: { opacity: 0 },
     nameArea: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, minWidth: 0 },
     // Bold, like the tiles' attribution line — the name is the card's one piece
     // of copy, and it has a saturated fill to hold its own against.
@@ -293,6 +446,6 @@ function createStyles(colors: ThemeColors, tone: string, fg: string) {
       justifyContent: "center",
     },
     checkboxDone: { backgroundColor: fg, borderColor: fg },
-      checkmark: { fontFamily: fonts.bold, color: tone, fontSize: typeScale.body },
+    checkmark: { fontFamily: fonts.bold, color: tone, fontSize: typeScale.body },
   });
 }

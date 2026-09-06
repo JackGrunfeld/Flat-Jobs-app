@@ -157,6 +157,9 @@ export type ShoppingListItem = {
   addedByUserId: string;
   purchased: boolean;
   createdAt: number;
+  /** Drag-chosen order within its list — only breaks ties between items
+   *  with the same upvoteCount; upvotes still decide the list's real order. */
+  position: number;
   upvoteCount: number;
   upvotedByUserIds: string[];
 };

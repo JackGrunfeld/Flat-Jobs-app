@@ -17,8 +17,8 @@ import { lockTabSwipe, unlockTabSwipe } from "../navigation/tabSwipeLock";
 // `getItemLayout` is what lets the list jump straight to a day without having
 // rendered the days in between. The gap lives on the tile as a margin rather
 // than in a separator, so STEP stays exactly one tile's pitch.
-const TILE_WIDTH = 54;
-const TILE_HEIGHT = 82;
+const TILE_WIDTH = 44;
+const TILE_HEIGHT = 56;
 const TILE_GAP = 14;
 const STEP = TILE_WIDTH + TILE_GAP;
 
@@ -414,7 +414,7 @@ function createStyles(colors: ThemeColors) {
     tile: {
       width: "100%",
       height: "100%",
-      borderRadius: 16,
+      borderRadius: 12,
       backgroundColor: colors.surfaceAlt,
       // Clips the highlight to the tile's corners — it's a plain fill behind
       // the face rather than a rounded box of its own.
@@ -440,7 +440,7 @@ function createStyles(colors: ThemeColors) {
       justifyContent: "center",
       gap: 5,
     },
-    weekday: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 1 },
+    weekday: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 1, marginTop: 10 },
     numberWrap: {
       minWidth: 28,
       paddingHorizontal: 5,

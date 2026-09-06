@@ -861,7 +861,7 @@ function createStyles(colors: ThemeColors) {
   // doesn't need, date sits flush against the box's right edge.
   calendarBoxMainRow: { flexDirection: "row", alignItems: "baseline", gap: 25 },
   calendarBoxMainTitle: {
-    marginTop: 15,
+    marginTop: 29,
     flex: 1,
     fontFamily: fonts.display,
     fontSize: 30,
@@ -883,7 +883,11 @@ function createStyles(colors: ThemeColors) {
   // second headline. Pushed down clear of the main row rather than sitting
   // snug under it, so it reads as a footer to the box rather than a second
   // line of it.
-  calendarBoxNextBlock: { marginTop: 10},
+  // Shifted visually with a transform rather than margin: margin here is flex
+  // space that `calendarBoxMain` (flex: 1, centred) would give back, so
+  // growing it nudges the main event up. A transform moves the block without
+  // touching the box it reserves, so the main event stays exactly put.
+  calendarBoxNextBlock: { marginTop: 10, transform: [{ translateY: 10 }] },
   // A short rule rather than a full-width one — the same treatment as the
   // "Coming Up" heading's own rule, so the two read as a matched pair.
   calendarBoxNextRule: {

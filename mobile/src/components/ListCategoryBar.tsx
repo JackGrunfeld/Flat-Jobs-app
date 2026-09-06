@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -43,6 +43,17 @@ type Props = {
   onEdit: (list: ShoppingList) => void;
   /** Drag-committed order. Carries every list id, in the new order. */
   onReorder: (orderedIds: string[]) => void;
+  /** A chip to highlight because a shopping item is being dragged over it
+   *  from the list below — distinct from `activeListId`, which is about
+   *  what's selected rather than what's being dropped on. */
+  dropHighlightId?: string | null;
+};
+
+export type ListCategoryBarHandle = {
+  /** Which chip, if any, sits under this point on screen — screen (page)
+   *  coordinates, the same ones a PanResponder gesture reports. Used to
+   *  drop a dragged shopping item onto a category. */
+  hitTest: (pageX: number, pageY: number) => string | null;
 };
 
 // The row of list categories under the Shopping List subheading. Chips take
@@ -53,7 +64,10 @@ type Props = {
 //
 // One gesture does double duty, iOS-style: long-press lifts a chip, then
 // moving reorders it and releasing without moving opens its edit menu.
-export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, onEdit, onReorder }: Props) {
+export default forwardRef<ListCategoryBarHandle, Props>(function ListCategoryBar(
+  { lists, activeListId, onSelect, onAdd, onEdit, onReorder, dropHighlightId = null },
+  ref,
+) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -63,6 +77,11 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
   const [measuredAt, setMeasuredAt] = useState(0);
 
   const scrollRef = useRef<ScrollView>(null);
+  const scrollWrapRef = useRef<View>(null);
+  // The strip's own page position — measured once it lays out, so an
+  // external drag (from the item list below) can turn a raw touch point
+  // into "which chip is under the finger" without re-measuring every frame.
+  const containerLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
   const scrollXRef = useRef(0);
   const viewportWRef = useRef(0);
   const contentWRef = useRef(0);
@@ -111,6 +130,33 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
   const syncOverflow = useCallback(() => {
     setOverflowing(contentWRef.current > viewportWRef.current + 1);
   }, []);
+
+  const measureContainer = useCallback(() => {
+    scrollWrapRef.current?.measureInWindow((x, y, width, height) => {
+      containerLayoutRef.current = { x, y, width, height };
+    });
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      hitTest(pageX: number, pageY: number) {
+        const c = containerLayoutRef.current;
+        if (pageY < c.y || pageY > c.y + c.height || pageX < c.x || pageX > c.x + c.width) return null;
+        // The strip's own coordinates are content-space (unaffected by
+        // scroll), so undo the container's page offset and add back how far
+        // it's scrolled to land in the same space `offsets` is measured in.
+        const localX = pageX - c.x + scrollXRef.current;
+        for (let i = 0; i < ids.length; i++) {
+          const start = offsetsRef.current[i] ?? 0;
+          const width = widthsRef.current[ids[i]] ?? 0;
+          if (localX >= start && localX <= start + width) return ids[i];
+        }
+        return null;
+      },
+    }),
+    [ids],
+  );
 
   // Slide every chip between the dragged chip's origin and its current
   // target out of the way by exactly one chip-width, so the gap under the
@@ -270,6 +316,7 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
             claims it on touch-down — before the tab wrapper is ever asked.
             Covers the chips too, so a reorder drag can't change tab either. */}
         <View
+          ref={scrollWrapRef}
           style={styles.scrollWrap}
           onTouchStart={lockTabSwipe}
           onTouchEnd={unlockTabSwipe}
@@ -289,6 +336,7 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
             onLayout={(e) => {
               viewportWRef.current = e.nativeEvent.layout.width;
               syncOverflow();
+              measureContainer();
             }}
             onContentSizeChange={(w) => {
               contentWRef.current = w;
@@ -302,6 +350,7 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
                 list={list}
                 index={index}
                 active={list.id === activeListId}
+                dropHighlighted={list.id === dropHighlightId}
                 dragging={list.id === draggingId}
                 anyDragging={draggingId !== null}
                 translateX={list.id === draggingId ? dragX : shiftFor(list.id)}
@@ -342,12 +391,14 @@ export default function ListCategoryBar({ lists, activeListId, onSelect, onAdd, 
       </View>
     </View>
   );
-}
+});
 
 type ChipProps = {
   list: ShoppingList;
   index: number;
   active: boolean;
+  /** A shopping item is being dragged over this chip right now. */
+  dropHighlighted: boolean;
   dragging: boolean;
   anyDragging: boolean;
   translateX: Animated.Value;
@@ -367,6 +418,7 @@ function CategoryChip({
   list,
   index,
   active,
+  dropHighlighted,
   dragging,
   anyDragging,
   translateX,
@@ -435,7 +487,12 @@ function CategoryChip({
       {...panResponder.panHandlers}
     >
       <Pressable
-        style={[styles.chip, active && styles.chipActive, dragging && styles.chipDragging]}
+        style={[
+          styles.chip,
+          active && styles.chipActive,
+          dragging && styles.chipDragging,
+          dropHighlighted && styles.chipDropHighlighted,
+        ]}
         onPress={onSelect}
         // Reordering while a different chip is mid-drag would be ambiguous.
         disabled={anyDragging && !dragging}
@@ -485,6 +542,10 @@ function createStyles(colors: ThemeColors) {
       paddingVertical: 5,
       paddingHorizontal: 10,
       backgroundColor: colors.surface,
+      // Always reserved, so lighting up on a drop-hover doesn't nudge the
+      // chip's own size and shove its neighbours.
+      borderWidth: 2,
+      borderColor: "transparent",
     },
     chipActive: { backgroundColor: colors.accent },
     chipDragging: {
@@ -492,6 +553,12 @@ function createStyles(colors: ThemeColors) {
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.35,
       shadowRadius: 8,
+    },
+    // A shopping item is hovering over this chip mid-drag — a ring rather
+    // than a fill, so it reads distinctly from `chipActive` even when the
+    // hovered chip is also the selected one.
+    chipDropHighlighted: {
+      borderColor: colors.accentInk,
     },
     chipText: {
       fontFamily: fonts.bold,
